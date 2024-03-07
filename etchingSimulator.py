@@ -299,11 +299,11 @@ class etching:
 
         return depoFilm
     
-    def runEtching(self, step, seed, N):
+    def runEtching(self, step, seed, N, weight):
         # filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
         # velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
         # N = int(631394)
-        weights = np.ones(N)*1e-2
+        weights = np.ones(N)*weight
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
