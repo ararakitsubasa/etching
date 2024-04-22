@@ -147,14 +147,15 @@ class etching:
 
     def etch_film(self, film, pos, vel, i, j, k, weights_arr, depoStep):
 
-        indice_inject = np.array(film[i, j, k] > 5)
+        indice_inject = np.array(film[i, j, k] < 0)
         # print(indice_inject)
 
         pos_1 = pos[indice_inject]
         # print(pos_1)
 
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
-        surface_depo = np.logical_and(film > 0, film < 2000) #etching
+        # surface_depo = np.logical_and(film > 0, film < 2000) #etching
+        surface_depo = np.logical_and(film > 0, film < 2000)
         surface_tree = KDTree(np.argwhere(surface_depo == True))
 
         dd, ii = surface_tree.query(pos_1, k=5, workers=1)
@@ -216,9 +217,17 @@ class etching:
 
         surface_film = np.logical_and(film >= 9, film < 10)
         film[surface_film] = int(-100*depoStep)
+        # surface_film = np.logical_and(film >= 10-depoStep, film < 10)
+        # film[surface_film] = int(10-depoStep)
 
         return film, pos, vel, weights_arr
 
+    # def attach_film(self, film, pos, vel, i, j, k, weights_arr):
+
+
+
+    #     return False
+    
     def getAcc_etch(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep):
         dx = boxsize
 
