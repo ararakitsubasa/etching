@@ -5,11 +5,11 @@ import time as Time
 from tqdm import tqdm, trange
 
 class etching:
-    def __init__(self, param, TS, N, sub_xy):
+    def __init__(self, param, TS, N, sub_xy, film):
         self.param = param # n beta
         self.TS = TS
 
-        film = np.zeros((200, 200, 100))
+        # film = np.zeros((200, 200, 100))
 
         # bottom = 10
         # film[:, :, 0:bottom] = 10 # bottom
@@ -22,14 +22,14 @@ class etching:
         # film[200-right_side:, :, 0:height] = 10
         # film[0:left_side, :, 0:height] = 10
 
-        height = 60
-        film[:, :, 0:height] = 10 # bottom
-        left_side = 75
-        right_side = 75
+        # height = 60
+        # film[:, :, 0:height] = 10 # bottom
+        # left_side = 75
+        # right_side = 75
 
-        thick = 70
-        film[:, 200-right_side:, height:thick] = 1000
-        film[:, 0:left_side, height:thick] = 1000
+        # thick = 70
+        # film[:, 200-right_side:, height:thick] = 1000
+        # film[:, 0:left_side, height:thick] = 1000
 
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
@@ -145,7 +145,7 @@ class etching:
 
         return pos_cp, vel_cp, i_cp, j_cp, k_cp, weights_arr_cp
 
-    def depo_film(self, film, pos, vel, i, j, k, weights_arr, depoStep):
+    def etch_film(self, film, pos, vel, i, j, k, weights_arr, depoStep):
 
         indice_inject = np.array(film[i, j, k] > 5)
         # print(indice_inject)
@@ -219,7 +219,7 @@ class etching:
 
         return film, pos, vel, weights_arr
 
-    def getAcc_depo(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep):
+    def getAcc_etch(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep):
         dx = boxsize
 
         pos_cp = pos
@@ -234,13 +234,13 @@ class etching:
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, cellSize_x, cellSize_y, cellSize_z, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo
 
-    def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
+    def runEtch(self, p0, v0, time, film, weights_arr, depoStep):
 
         tmax = time
         tstep = 1e-2
@@ -259,7 +259,7 @@ class etching:
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                p2v2 = self.getAcc_depo(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep)
+                p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep)
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
                     break
@@ -283,19 +283,19 @@ class etching:
 
         return film
     
-    def stepRundepo(self, step, randomSeed, velosityDist, weights):
+    def stepRunEtch(self, step, randomSeed, velosityDist, weights):
 
         for i in range(step):
             np.random.seed(randomSeed+i)
             position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+90]).T
-            result =  self.runDepo(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
+            result =  self.runEtch(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
 
         return result
     
     def run(self, step, seed, Ero_dist_x, Ero_dist_y):
         filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
         velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, filmMac[0])
+        depoFilm = self.stepRunEtch(step, seed, velosity_matrix, filmMac[0])
 
         return depoFilm
     
@@ -308,7 +308,7 @@ class etching:
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
+        depoFilm = self.stepRunEtch(step, seed, velosity_matrix, weights)
 
         return depoFilm
     
