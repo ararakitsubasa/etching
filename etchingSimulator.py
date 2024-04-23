@@ -155,7 +155,7 @@ class etching:
 
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
-        surface_depo = np.logical_and(film > 0, film < 2000)
+        surface_depo = np.logical_and(film < 0, film > -100)
         surface_tree = KDTree(np.argwhere(surface_depo == True))
 
         dd, ii = surface_tree.query(pos_1, k=5, workers=1)
@@ -215,7 +215,7 @@ class etching:
             k = k[~indice_inject]
             weights_arr = weights_arr[~indice_inject]
 
-        surface_film = np.logical_and(film >= 9, film < 10)
+        surface_film = np.logical_and(film >= -11, film < -10)
         film[surface_film] = int(-100*depoStep)
         # surface_film = np.logical_and(film >= 10-depoStep, film < 10)
         # film[surface_film] = int(10-depoStep)
@@ -249,10 +249,10 @@ class etching:
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo
 
-    def runEtch(self, p0, v0, time, film, weights_arr, depoStep):
+    def runEtch(self, p0, v0, time, tstep, film, weights_arr, depoStep):
 
         tmax = time
-        tstep = 1e-2
+        # tstep = 1e-2
         t = 0
         p1 = p0
         v1 = v0
@@ -292,23 +292,23 @@ class etching:
 
         return film
     
-    def stepRunEtch(self, step, randomSeed, velosityDist, weights):
+    def stepRunEtch(self, step, tstep, randomSeed, velosityDist, weights):
 
         for i in range(step):
             np.random.seed(randomSeed+i)
             position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+90]).T
-            result =  self.runEtch(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
+            result =  self.runEtch(position_matrix, velosityDist, 1, tstep, self.substrate, weights, depoStep=i+1)
 
         return result
     
-    def run(self, step, seed, Ero_dist_x, Ero_dist_y):
+    def run(self, step, tstep, seed, Ero_dist_x, Ero_dist_y):
         filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
         velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
-        depoFilm = self.stepRunEtch(step, seed, velosity_matrix, filmMac[0])
+        depoFilm = self.stepRunEtch(step, tstep, seed, velosity_matrix, filmMac[0])
 
         return depoFilm
     
-    def runEtching(self, step, seed, N, weight):
+    def runEtching(self, step, tstep, seed, N, weight):
         # filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
         # velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
         # N = int(631394)
@@ -317,7 +317,7 @@ class etching:
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
-        depoFilm = self.stepRunEtch(step, seed, velosity_matrix, weights)
+        depoFilm = self.stepRunEtch(step, tstep, seed, velosity_matrix, weights)
 
         return depoFilm
     
