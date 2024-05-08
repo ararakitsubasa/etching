@@ -19,13 +19,14 @@ class reflect:
                                         [  0,   pi/18,   pi/9,   pi/6,   2*pi/9,   5*pi/18,   pi/3,   7*pi/18,   4*pi/9, pi/2]])
         else:
             self.yield_hist = yield_hist
+        self.yield_func = interpolate.interp1d(self.yield_hist[1], self.yield_hist[0], kind='quadratic')
 
     def scanZ(self, film):
         xshape = film.shape[0]
         yshape = film.shape[1]
         zshape = film.shape[2]
         surface_sparse = torch.zeros((xshape, yshape, zshape))
-        print(zshape)
+        # print(zshape)
         for i in range(zshape-1):
             for j in range(xshape-1):
                 for k in range(yshape-1):
@@ -106,7 +107,7 @@ class reflect:
         test = self.scanZ(film)
 
         points = test.indices().T
-        print(points.shape)
+        # print(points.shape)
 
         surface_tree = KDTree(points)
         dd, ii = surface_tree.query(points, k=10, workers=1)
@@ -183,8 +184,8 @@ class reflect:
         theta = np.arccos(dot_products)
         return theta
     
-    def compare_theta(self, theta):
-        yield_func = interpolate.interp1d(self.yield_hist[1], self.yield_hist[0], kind='quadratic')
-        etch_yield = yield_func(theta)
+    def get_yield(self, theta):
+        # yield_func = interpolate.interp1d(self.yield_hist[1], self.yield_hist[0], kind='quadratic')
+        etch_yield = self.yield_func(theta)
         return etch_yield
 

@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial import KDTree
 import time as Time
 from tqdm import tqdm, trange
+import reflect_module
 
 class etching:
     def __init__(self, param, TS, N, sub_xy, film):
@@ -145,36 +146,41 @@ class etching:
 
         return pos_cp, vel_cp, i_cp, j_cp, k_cp, weights_arr_cp
 
-    def etch_film(self, film, pos, vel, i, j, k, weights_arr, depoStep):
+    def etch_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes, initReflect):
 
         indice_inject = np.array(film[i, j, k] < 0)
         # print(indice_inject)
 
         pos_1 = pos[indice_inject]
+        vel_1 = vel[indice_inject]
         # print(pos_1)
         # add reflection here
         # reflect_normal_center = pos_1
-
+        get_theta = initReflect.get_inject_theta(planes, pos_1, vel_1)
+        cut_theta_low = np.where(get_theta < 0, get_theta, np.pi/2)
+        cut_theta_high = np.where(cut_theta_low > np.pi/2, cut_theta_low, np.pi/2)
+        print(cut_theta_high.shape)
+        etch_yield = initReflect.get_yield(cut_theta_high)
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
         surface_depo = np.logical_and(film < 0, film > -100)
         surface_tree = KDTree(np.argwhere(surface_depo == True))
 
-        dd, ii = surface_tree.query(pos_1, k=5, workers=1)
+        dd, ii = surface_tree.query(pos_1, k=5, workers=5)
         # print(dd, ii, sep='\n')
 
         surface_indice = np.argwhere(surface_depo == True)
         # print(surface_indice.shape)
 
         ddsum = dd[:,0] + dd[:, 1] + dd[:, 2] + dd[:, 3] + dd[:, 4]
-
+        
         # first order
         i1 = surface_indice[ii][:,0,0] #[particle, order, xyz]
         j1 = surface_indice[ii][:,0,1]
         k1 = surface_indice[ii][:,0,2]
 
         # deposit the particle injected into the film
-        film[i1,j1,k1] -= weights_arr[indice_inject]*dd[:,0]/ddsum
+        film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,0]/ddsum
 
         # second order
         i2 = surface_indice[ii][:,1,0] #[particle, order, xyz]
@@ -182,7 +188,7 @@ class etching:
         k2 = surface_indice[ii][:,1,2]
 
         # deposit the particle injected into the film
-        film[i2,j2,k2] -= weights_arr[indice_inject]*dd[:,1]/ddsum
+        film[i2,j2,k2] -= weights_arr[indice_inject]*etch_yield*dd[:,1]/ddsum
 
         # third order
         i3 = surface_indice[ii][:,2,0] #[particle, order, xyz]
@@ -190,7 +196,7 @@ class etching:
         k3 = surface_indice[ii][:,2,2]
 
         # deposit the particle injected into the film
-        film[i3,j3,k3] -= weights_arr[indice_inject]*dd[:,2]/ddsum
+        film[i3,j3,k3] -= weights_arr[indice_inject]*etch_yield*dd[:,2]/ddsum
 
         # fourth order
         i4 = surface_indice[ii][:,3,0] #[particle, order, xyz]
@@ -198,7 +204,7 @@ class etching:
         k4 = surface_indice[ii][:,3,2]
 
         # deposit the particle injected into the film
-        film[i4,j4,k4] -= weights_arr[indice_inject]*dd[:,3]/ddsum
+        film[i4,j4,k4] -= weights_arr[indice_inject]*etch_yield*dd[:,3]/ddsum
 
         # fifth order
         i5 = surface_indice[ii][:,4,0] #[particle, order, xyz]
@@ -206,7 +212,7 @@ class etching:
         k5 = surface_indice[ii][:,4,2]
 
         # deposit the particle injected into the film
-        film[i5,j5,k5] -= weights_arr[indice_inject]*dd[:,4]/ddsum
+        film[i5,j5,k5] -= weights_arr[indice_inject]*etch_yield*dd[:,4]/ddsum
 
         # delete the particle injected into the film
         if np.any(indice_inject):
@@ -230,7 +236,7 @@ class etching:
 
     #     return False
     
-    def getAcc_etch(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep):
+    def getAcc_etch(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep, planes, initReflect):
         dx = boxsize
 
         pos_cp = pos
@@ -245,7 +251,7 @@ class etching:
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, cellSize_x, cellSize_y, cellSize_z, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes, initReflect)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
@@ -266,11 +272,12 @@ class etching:
         cellSizeZ = 100
         # print('run'+str(depoStep))
         cell = 1
-
+        initReflect = reflect_module.reflect(center_with_direction=np.array([[100,100,50], [100, 100, 0]]), range3D=np.array([[0, 100, 0, 100, 10, 100], [0, 100, 0, 100, 0, 10]]), InOrOut=[1, 1])
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep)
+                planes = initReflect.get_pointcloud(film)
+                p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
                     break
