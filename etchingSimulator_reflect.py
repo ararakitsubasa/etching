@@ -6,10 +6,10 @@ from tqdm import tqdm, trange
 import reflect_module
 
 class etching:
-    def __init__(self, param, TS, N, sub_xy, film):
+    def __init__(self, param, TS, N, sub_xy, film, n):
         self.param = param # n beta
         self.TS = TS
-
+        self.n = n 
         # film = np.zeros((200, 200, 100))
 
         # bottom = 10
@@ -90,12 +90,12 @@ class etching:
 
         return filmMac
 
-    def velocity_dist(self, Ero_dist_x, filmMac):
+    def velocity_dist(self, Ero_dist_x, filmMac, n):
         N = Ero_dist_x.shape[0]
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
-        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
+        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2, n), self.max_velocity_w(Random1, Random2, n), self.max_velocity_v(Random3)]).T
         velosity_norm = np.linalg.norm(velosity_matrix, axis=1)
         vel_theta = filmMac[1]/180*np.pi
         vel_phi = filmMac[2]/180*np.pi
@@ -109,10 +109,10 @@ class etching:
 
 
     def max_velocity_u(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.cos(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))**self.n
 
     def max_velocity_w(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.sin(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.sin(2*np.pi*random2))**self.n
 
     def max_velocity_v(self, random3):
         return -self.Cm*np.sqrt(-np.log(random3))
