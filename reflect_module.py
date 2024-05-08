@@ -175,7 +175,7 @@ class reflect:
         plane_point = plane[:, 3:6]
         normal = plane[:, :3]
         velocity_normal = np.linalg.norm(vel, axis=1)
-        velocity = np.divide(-vel.T, velocity_normal).T
+        velocity = np.divide(vel.T, velocity_normal).T
         plane_tree = KDTree(plane_point)
 
         dd, ii = plane_tree.query(pos, k=1, workers=1)

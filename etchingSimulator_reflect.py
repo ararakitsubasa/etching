@@ -9,7 +9,7 @@ class etching:
     def __init__(self, param, TS, N, sub_xy, film, n):
         self.param = param # n beta
         self.TS = TS
-        self.n = n 
+        self.n = n # cosn
         # film = np.zeros((200, 200, 100))
 
         # bottom = 10
@@ -157,10 +157,17 @@ class etching:
         # add reflection here
         # reflect_normal_center = pos_1
         get_theta = initReflect.get_inject_theta(planes, pos_1, vel_1)
-        cut_theta_low = np.where(get_theta < 0, get_theta, np.pi/2)
-        cut_theta_high = np.where(cut_theta_low > np.pi/2, cut_theta_low, np.pi/2)
+        get_theta = -get_theta + np.pi
+        cut_theta_low = np.where(get_theta >= 0, get_theta, np.pi/2)
+        cut_theta_high = np.where(cut_theta_low < np.pi/2, cut_theta_low, np.pi/2)
         print(cut_theta_high.shape)
         etch_yield = initReflect.get_yield(cut_theta_high)
+        # if len(etch_yield) != 0:
+            # print('-----etch yield----')
+            # print(etch_yield.max())
+            # # print(cut_theta_low)
+            # print(cut_theta_high)
+            # print(get_theta)
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
         surface_depo = np.logical_and(film < 0, film > -100)
@@ -228,7 +235,7 @@ class etching:
         # surface_film = np.logical_and(film >= 10-depoStep, film < 10)
         # film[surface_film] = int(10-depoStep)
 
-        return film, pos, vel, weights_arr
+        return film, pos, vel, weights_arr, cut_theta_high.shape[0]
 
     # def attach_film(self, film, pos, vel, i, j, k, weights_arr):
 
@@ -251,11 +258,11 @@ class etching:
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, cellSize_x, cellSize_y, cellSize_z, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes, initReflect)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo, cut_theta_high = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes, initReflect)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo
+        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, cut_theta_high
 
     def runEtch(self, p0, v0, time, tstep, film, weights_arr, depoStep):
 
@@ -278,6 +285,9 @@ class etching:
             while t < tmax:
                 planes = initReflect.get_pointcloud(film)
                 p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
+                cut_theta_high = p2v2[4]
+                if cut_theta_high == 0 and i > 40:
+                    break
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
                     break
