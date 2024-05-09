@@ -296,7 +296,7 @@ class etching:
 
         for i in range(step):
             np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+90]).T
+            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+140]).T
             result =  self.runEtch(position_matrix, velosityDist, 1, tstep, self.substrate, weights, depoStep=i+1)
 
         return result

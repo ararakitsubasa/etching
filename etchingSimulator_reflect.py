@@ -6,31 +6,14 @@ from tqdm import tqdm, trange
 import reflect_module
 
 class etching:
-    def __init__(self, param, TS, N, sub_xy, film, n):
+    def __init__(self, param, TS, N, sub_xy, film, n, cellSize):
         self.param = param # n beta
         self.TS = TS
         self.n = n # cosn
-        # film = np.zeros((200, 200, 100))
 
-        # bottom = 10
-        # film[:, :, 0:bottom] = 10 # bottom
-
-        # height = 60
-        # left_side = 75
-        # right_side = 75
-        # film[:, 200-right_side:, 0:height] = 10
-        # film[:, 0:left_side, 0:height] = 10
-        # film[200-right_side:, :, 0:height] = 10
-        # film[0:left_side, :, 0:height] = 10
-
-        # height = 60
-        # film[:, :, 0:height] = 10 # bottom
-        # left_side = 75
-        # right_side = 75
-
-        # thick = 70
-        # film[:, 200-right_side:, height:thick] = 1000
-        # film[:, 0:left_side, height:thick] = 1000
+        self.cellSizeX = cellSize[0]
+        self.cellSizeY = cellSize[1]
+        self.cellSizeZ = cellSize[2]
 
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
@@ -117,7 +100,7 @@ class etching:
     def max_velocity_v(self, random3):
         return -self.Cm*np.sqrt(-np.log(random3))
 
-    def boundary(self, pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z, weights_arr):
+    def boundary(self, pos, vel, i, j, k, weights_arr):
         # print(pos)
         pos_cp = np.asarray(pos)
         vel_cp = np.asarray(vel)
@@ -125,9 +108,9 @@ class etching:
         i_cp = np.asarray(i)
         j_cp = np.asarray(j)
         k_cp = np.asarray(k)
-        cellSize_x_cp = np.asarray(cellSize_x)
-        cellSize_y_cp = np.asarray(cellSize_y)
-        cellSize_z_cp = np.asarray(cellSize_z)
+        cellSize_x_cp = np.asarray(self.cellSizeX)
+        cellSize_y_cp = np.asarray(self.cellSizeY)
+        cellSize_z_cp = np.asarray(self.cellSizeZ)
 
         # print(i_cp)
         indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp <= 0)
@@ -243,7 +226,7 @@ class etching:
 
     #     return False
     
-    def getAcc_etch(self, pos, vel, boxsize, cellSize_x, cellSize_y, cellSize_z, tStep, film, weights_arr, depoStep, planes, initReflect):
+    def getAcc_etch(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes, initReflect):
         dx = boxsize
 
         pos_cp = pos
@@ -256,7 +239,7 @@ class etching:
         k = np.floor((pos_cp[:, 2]+0.5) / dx).astype(int)
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
-        pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, cellSize_x, cellSize_y, cellSize_z, weights_arr)
+        pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
         # print(pos_cp)
         film_depo, pos_cp, Nvel_cp, weights_arr_depo, cut_theta_high = self.etch_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes, initReflect)
 
@@ -273,18 +256,14 @@ class etching:
         v1 = v0
         film_1 = self.substrate
         weights_arr_1 = weights_arr
-        # ng = 1.65*10**20 # 0.5mTorr
-        cellSizeX = 200
-        cellSizeY = 200
-        cellSizeZ = 100
-        # print('run'+str(depoStep))
+
         cell = 1
         initReflect = reflect_module.reflect(center_with_direction=np.array([[100,100,50], [100, 100, 0]]), range3D=np.array([[0, 100, 0, 100, 10, 100], [0, 100, 0, 100, 0, 10]]), InOrOut=[1, 1])
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
                 planes = initReflect.get_pointcloud(film)
-                p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
+                p2v2 = self.getAcc_etch(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
                 cut_theta_high = p2v2[4]
                 if cut_theta_high <= 100 and i > 200:
                     break
@@ -315,7 +294,7 @@ class etching:
 
         for i in range(step):
             np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+90]).T
+            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+140]).T
             result =  self.runEtch(position_matrix, velosityDist, 1, tstep, self.substrate, weights, depoStep=i+1)
 
         return result
