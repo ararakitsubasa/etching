@@ -265,7 +265,7 @@ class etching:
                 planes = initReflect.get_pointcloud(film)
                 p2v2 = self.getAcc_etch(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
                 cut_theta_high = p2v2[4]
-                if cut_theta_high <= 100 and i > 200:
+                if cut_theta_high <= 10 and i > 400:
                     break
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
@@ -294,7 +294,7 @@ class etching:
 
         for i in range(step):
             np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+140]).T
+            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10 + self.cellSizeZ-10]).T
             result =  self.runEtch(position_matrix, velosityDist, 1, tstep, self.substrate, weights, depoStep=i+1)
 
         return result

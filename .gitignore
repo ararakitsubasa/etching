@@ -23,6 +23,11 @@ results/
 vcpkg/
 npzData/
 plot/
+__pycache__/*
+__pycache__/depoSimulator.cpython-311.pyc
+*.pyc
+*.cpython-*.pyc
+depo*.cpython-*.pyc
 depoDemo*.ipynb
 etchingDemo*.ipynb
 *.npz
