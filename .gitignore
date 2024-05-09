@@ -23,6 +23,8 @@ results/
 vcpkg/
 npzData/
 plot/
+depoDemo*.ipynb
+etchingDemo*.ipynb
 *.npz
 *.npy
 *.vti

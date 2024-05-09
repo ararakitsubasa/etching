@@ -5,10 +5,10 @@ import time as Time
 from tqdm import tqdm, trange
 
 class etching:
-    def __init__(self, param, TS, N, sub_xy, film):
+    def __init__(self, param, TS, N, sub_xy, film, n):
         self.param = param # n beta
         self.TS = TS
-
+        self.n = n # cosn
         # film = np.zeros((200, 200, 100))
 
         # bottom = 10
@@ -108,10 +108,10 @@ class etching:
 
 
     def max_velocity_u(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.cos(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))**self.n
 
     def max_velocity_w(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.sin(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.sin(2*np.pi*random2))**self.n
 
     def max_velocity_v(self, random3):
         return -self.Cm*np.sqrt(-np.log(random3))

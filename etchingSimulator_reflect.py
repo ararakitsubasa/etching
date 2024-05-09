@@ -286,7 +286,7 @@ class etching:
                 planes = initReflect.get_pointcloud(film)
                 p2v2 = self.getAcc_etch(p1, v1, cell, cellSizeX, cellSizeY, cellSizeZ, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
                 cut_theta_high = p2v2[4]
-                if cut_theta_high == 0 and i > 40:
+                if cut_theta_high <= 100 and i > 200:
                     break
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
