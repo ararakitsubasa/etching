@@ -141,9 +141,9 @@ class etching:
         # reflect_normal_center = pos_1
         get_theta = initReflect.get_inject_theta(planes, pos_1, vel_1)
         get_theta = -get_theta + np.pi
-        cut_theta_low = np.where(get_theta >= 0, get_theta, np.pi/2)
-        cut_theta_high = np.where(cut_theta_low < np.pi/2, cut_theta_low, np.pi/2)
-        print(cut_theta_high.shape)
+        cut_theta_low = np.where(get_theta >= 0, get_theta, np.abs(get_theta))
+        cut_theta_high = np.where(cut_theta_low < np.pi/2, cut_theta_low, -cut_theta_low + np.pi)
+        # print(cut_theta_high.shape)
         etch_yield = initReflect.get_yield(cut_theta_high)
         # if len(etch_yield) != 0:
             # print('-----etch yield----')
@@ -247,7 +247,7 @@ class etching:
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, cut_theta_high
 
-    def runEtch(self, p0, v0, time, tstep, film, weights_arr, depoStep):
+    def runEtch(self, p0, v0, time, tstep, weights_arr, depoStep):
 
         tmax = time
         # tstep = 1e-2
@@ -256,15 +256,26 @@ class etching:
         v1 = v0
         film_1 = self.substrate
         weights_arr_1 = weights_arr
-
+        
         cell = 1
         initReflect = reflect_module.reflect(center_with_direction=np.array([[100,100,50], [100, 100, 0]]), range3D=np.array([[0, 100, 0, 100, 10, 100], [0, 100, 0, 100, 0, 10]]), InOrOut=[1, 1])
+        planes = initReflect.get_pointcloud(film_1)
+        count_etching = 0
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                planes = initReflect.get_pointcloud(film)
+                # if i % (int((tmax/tstep)/100)) == 0:
+                #     print(i)
+                #     planes = initReflect.get_pointcloud(film_1)
+
                 p2v2 = self.getAcc_etch(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep, planes, initReflect)
                 cut_theta_high = p2v2[4]
+                count_etching += cut_theta_high
+                print(count_etching)
+                if count_etching >= 100:
+                    count_etching = 0
+                    planes = initReflect.get_pointcloud(film_1)
+                    print("get plane")
                 if cut_theta_high <= 10 and i > 400:
                     break
                 p2 = p2v2[1][0]
@@ -288,14 +299,14 @@ class etching:
                 #     # 更新发呆进度
                 #     pbar.update(5)
 
-        return film
+        return film_1
     
     def stepRunEtch(self, step, tstep, randomSeed, velosityDist, weights):
 
         for i in range(step):
             np.random.seed(randomSeed+i)
             position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10 + self.cellSizeZ-10]).T
-            result =  self.runEtch(position_matrix, velosityDist, 1, tstep, self.substrate, weights, depoStep=i+1)
+            result =  self.runEtch(position_matrix, velosityDist, 1, tstep, weights, depoStep=i+1)
 
         return result
     

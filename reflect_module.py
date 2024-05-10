@@ -4,7 +4,7 @@ from scipy.spatial import KDTree
 from scipy import interpolate
 import math
 from math import pi
-
+import time as Time
 
 class reflect:
     def __init__(self, center_with_direction, range3D, InOrOut, yield_hist = None):
@@ -110,7 +110,7 @@ class reflect:
         # print(points.shape)
 
         surface_tree = KDTree(points)
-        dd, ii = surface_tree.query(points, k=10, workers=1)
+        dd, ii = surface_tree.query(points, k=18, workers=5)
 
         pointsNP = points.numpy()
 
