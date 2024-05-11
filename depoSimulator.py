@@ -5,22 +5,10 @@ import time as Time
 from tqdm import tqdm, trange
 
 class depo:
-    def __init__(self, param, TS, N, sub_xy, film, cellSize):
+    def __init__(self, param, TS, N, sub_xy, film, cellSize, kdtreeN):
         self.param = param # n beta
         self.TS = TS
-
-        # film = np.zeros((200, 200, 100))
-
-        # bottom = 10
-        # film[:, :, 0:bottom] = 10 # bottom
-
-        # height = 60
-        # left_side = 75
-        # right_side = 75
-        # film[:, 200-right_side:, 0:height] = 10
-        # film[:, 0:left_side, 0:height] = 10
-        # film[200-right_side:, :, 0:height] = 10
-        # film[0:left_side, :, 0:height] = 10
+        self.kdtreeN = kdtreeN
         self.cellSizeX = cellSize[0]
         self.cellSizeY = cellSize[1]
         self.cellSizeZ = cellSize[2]
@@ -151,53 +139,20 @@ class depo:
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
         surface_tree = KDTree(np.argwhere(surface_depo == True))
 
-        dd, ii = surface_tree.query(pos_1, k=5, workers=1)
-        # print(dd, ii, sep='\n')
+        dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=1)
 
         surface_indice = np.argwhere(surface_depo == True)
-        # print(surface_indice.shape)
 
-        ddsum = dd[:,0] + dd[:, 1] + dd[:, 2] + dd[:, 3] + dd[:, 4]
+        ddsum = np.sum(dd, axis=1)
 
-        # first order
-        i1 = surface_indice[ii][:,0,0] #[particle, order, xyz]
-        j1 = surface_indice[ii][:,0,1]
-        k1 = surface_indice[ii][:,0,2]
+        # kdi order
+        for kdi in range(self.kdtreeN):
+            i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
+            j1 = surface_indice[ii][:,kdi,1]
+            k1 = surface_indice[ii][:,kdi,2]
 
-        # deposit the particle injected into the film
-        film[i1,j1,k1] += weights_arr[indice_inject]*dd[:,0]/ddsum
-
-        # second order
-        i2 = surface_indice[ii][:,1,0] #[particle, order, xyz]
-        j2 = surface_indice[ii][:,1,1]
-        k2 = surface_indice[ii][:,1,2]
-
-        # deposit the particle injected into the film
-        film[i2,j2,k2] += weights_arr[indice_inject]*dd[:,1]/ddsum
-
-        # third order
-        i3 = surface_indice[ii][:,2,0] #[particle, order, xyz]
-        j3 = surface_indice[ii][:,2,1]
-        k3 = surface_indice[ii][:,2,2]
-
-        # deposit the particle injected into the film
-        film[i3,j3,k3] += weights_arr[indice_inject]*dd[:,2]/ddsum
-
-        # fourth order
-        i4 = surface_indice[ii][:,3,0] #[particle, order, xyz]
-        j4 = surface_indice[ii][:,3,1]
-        k4 = surface_indice[ii][:,3,2]
-
-        # deposit the particle injected into the film
-        film[i4,j4,k4] += weights_arr[indice_inject]*dd[:,3]/ddsum
-
-        # fifth order
-        i5 = surface_indice[ii][:,4,0] #[particle, order, xyz]
-        j5 = surface_indice[ii][:,4,1]
-        k5 = surface_indice[ii][:,4,2]
-
-        # deposit the particle injected into the film
-        film[i5,j5,k5] += weights_arr[indice_inject]*dd[:,4]/ddsum
+            # deposit the particle injected into the film
+            film[i1,j1,k1] += weights_arr[indice_inject]*dd[:,kdi]/ddsum
 
         # delete the particle injected into the film
         if np.any(indice_inject):
@@ -209,7 +164,7 @@ class depo:
             weights_arr = weights_arr[~indice_inject]
 
         surface_film = np.logical_and(film >= 1, film < 2)
-        film[surface_film] = int(20*depoStep)
+        film[surface_film] = 20
 
         return film, pos, vel, weights_arr
 
