@@ -277,7 +277,7 @@ class depo:
 
         for i in range(step):
             np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+140]).T
+            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+ self.cellSizeZ - 10]).T
             result =  self.runDepo(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
 
         return result
