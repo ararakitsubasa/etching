@@ -5,7 +5,7 @@ import time as Time
 from tqdm import tqdm, trange
 
 class depo:
-    def __init__(self, param, TS, N, sub_xy, film, cellSize, kdtreeN):
+    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, kdtreeN):
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
@@ -16,6 +16,7 @@ class depo:
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
         self.substrate = film
+        self.n = n
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
@@ -90,10 +91,10 @@ class depo:
 
 
     def max_velocity_u(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.cos(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))**self.n
 
     def max_velocity_w(self, random1, random2):
-        return self.Cm*np.sqrt(-np.log(random1))*np.sin(2*np.pi*random2)
+        return self.Cm*np.sqrt(-np.log(random1))*(np.sin(2*np.pi*random2))**self.n
 
     def max_velocity_v(self, random3):
         return -self.Cm*np.sqrt(-np.log(random3))
@@ -232,7 +233,7 @@ class depo:
 
         for i in range(step):
             np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*200, np.random.rand(self.N)*200, np.random.rand(self.N)*10+ self.cellSizeZ - 10]).T
+            position_matrix = np.array([np.random.rand(self.N)*self.cellSizeZ, np.random.rand(self.N)*self.cellSizeZ, np.random.rand(self.N)*10+ self.cellSizeZ - 10]).T
             result =  self.runDepo(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
 
         return result
