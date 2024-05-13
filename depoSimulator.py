@@ -5,14 +5,14 @@ import time as Time
 from tqdm import tqdm, trange
 
 class depo:
-    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, kdtreeN):
+    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, kdtreeN, tstep):
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
         self.cellSizeX = cellSize[0]
         self.cellSizeY = cellSize[1]
         self.cellSizeZ = cellSize[2]
-
+        self.timeStep = tstep
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
         self.substrate = film
@@ -193,7 +193,7 @@ class depo:
     def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
 
         tmax = time
-        tstep = 1e-2
+        tstep = self.timeStep
         t = 0
         p1 = p0
         v1 = v0
