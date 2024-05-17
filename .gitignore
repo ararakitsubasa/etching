@@ -36,6 +36,8 @@ etchingDemo*.ipynb
 *.vtp
 *.exe
 *.csv
+*.png
+*.xlsx
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/

@@ -5,13 +5,14 @@ import time as Time
 from tqdm import tqdm, trange
 
 class depo:
-    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, kdtreeN, tstep):
+    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep):
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
         self.cellSizeX = cellSize[0]
         self.cellSizeY = cellSize[1]
         self.cellSizeZ = cellSize[2]
+        self.celllength = celllength
         self.timeStep = tstep
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
@@ -107,13 +108,29 @@ class depo:
         i_cp = np.asarray(i)
         j_cp = np.asarray(j)
         k_cp = np.asarray(k)
-        cellSize_x_cp = np.asarray(self.cellSizeX)
-        cellSize_y_cp = np.asarray(self.cellSizeY)
-        cellSize_z_cp = np.asarray(self.cellSizeZ)
+        cellSize_x_cp = np.asarray(self.cellSizeX) 
+        cellSize_y_cp = np.asarray(self.cellSizeY) 
+        cellSize_z_cp = np.asarray(self.cellSizeZ) 
 
-        indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp <= 0)
-        indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp <= 0)
-        indices |= np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
+        indiceXMax = i_cp >= cellSize_x_cp
+        indiceXMin = i_cp < 0
+        if np.any(indiceXMax):
+            i_cp[indiceXMax] -= cellSize_x_cp 
+            pos_cp[indiceXMax,0] -= self.celllength*self.cellSizeX
+        if np.any(indiceXMin):
+            i_cp[indiceXMin] += cellSize_x_cp
+            pos_cp[indiceXMin,0] += self.celllength*self.cellSizeX
+
+        indiceYMax = j_cp >= cellSize_y_cp
+        indiceYMin = j_cp < 0
+        if np.any(indiceYMax):
+            j_cp[indiceYMax] -= cellSize_y_cp
+            pos_cp[indiceYMax,1] -= self.celllength*self.cellSizeY
+        if np.any(indiceYMin):
+            j_cp[indiceYMin] += cellSize_y_cp
+            pos_cp[indiceYMin,1] += self.celllength*self.cellSizeY
+
+        indices = np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
 
         if np.any(indices):
             pos_cp = pos_cp[~indices]
@@ -127,8 +144,15 @@ class depo:
 
     def depo_film(self, film, pos, vel, i, j, k, weights_arr, depoStep):
 
-        indice_inject = np.array(film[i, j, k] > 5)
-        # print(indice_inject)
+        try:
+            indice_inject = np.array(film[i, j, k] > 5)
+        except IndexError:
+            print('get i out:{}'.format(i.max()))
+            print(i.max())
+            print('get j out:{}'.format(j.max()))
+            print(j.max())
+            print('get k out:{}'.format(k.max()))
+            print(k.max())
 
         pos_1 = pos[indice_inject]
         # print(pos_1)
@@ -174,9 +198,9 @@ class depo:
 
         tStep_cp = tStep
 
-        i = np.floor((pos_cp[:, 0]+0.5) / dx).astype(int)
-        j = np.floor((pos_cp[:, 1]+0.5) / dx).astype(int)
-        k = np.floor((pos_cp[:, 2]+0.5) / dx).astype(int)
+        i = np.floor((pos_cp[:, 0]/dx) + 0.5).astype(int)
+        j = np.floor((pos_cp[:, 1]/dx) + 0.5).astype(int)
+        k = np.floor((pos_cp[:, 2]/dx) + 0.5).astype(int)
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
@@ -197,7 +221,7 @@ class depo:
         film_1 = self.substrate
         weights_arr_1 = weights_arr
 
-        cell = 1
+        cell = self.celllength
 
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
