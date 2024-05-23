@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 import time as Time
 from tqdm import tqdm, trange
 from scipy.special import gamma, factorial
@@ -23,6 +22,7 @@ class transport:
         self.chamberX = chamberSize[0]
         self.chamberY = chamberSize[1]
         self.DXsec = DXsec
+        self.depo_pos = np.zeros((1,6))
 
     
     def boundary(self, pos, vel, i, j, k):
@@ -31,13 +31,23 @@ class transport:
         i_cp = np.asarray(i)
         j_cp = np.asarray(j)
         k_cp = np.asarray(k)
-        cellSize_x_cp = np.asarray(self.cellSize_x)
-        cellSize_y_cp = np.asarray(self.cellSize_y)
+        cellSize_x_cp = np.asarray(self.cellSize_x*2)
+        cellSize_y_cp = np.asarray(self.cellSize_y*2)
         cellSize_z_cp = np.asarray(self.cellSize_z)
 
-        indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp <= 0)
-        indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp <= 0)
-        indices |= np.logical_or(k_cp > cellSize_z_cp, k_cp < 0)
+        indices1 = np.logical_or(i_cp >= cellSize_x_cp, i_cp <= 0)
+        indices1 |= np.logical_or(j_cp >= cellSize_y_cp, j_cp <= 0)
+
+        if np.any(indices1):
+            pos_cp = pos_cp[~indices1]
+            vel_cp = vel_cp[~indices1]
+            i_cp = i_cp[~indices1]
+            j_cp = j_cp[~indices1]
+            k_cp = k_cp[~indices1]
+
+        pos_radius = np.linalg.norm(np.array([pos_cp[:, 0] - self.chamberX, pos_cp[:, 1] - self.chamberY]), axis=0)
+
+        indices = np.array(pos_radius >= self.chamberX)
 
         if np.any(indices):
             pos_cp = pos_cp[~indices]
@@ -46,21 +56,34 @@ class transport:
             j_cp = j_cp[~indices]
             k_cp = k_cp[~indices]
 
+        depo_indices = np.logical_or(k_cp > cellSize_z_cp, k_cp < 0)
+
+        if np.any(depo_indices):
+            self.depo_position(pos_cp[depo_indices], vel_cp[depo_indices])
+            pos_cp = pos_cp[~depo_indices]
+            vel_cp = vel_cp[~depo_indices]
+            i_cp = i_cp[~depo_indices]
+            j_cp = j_cp[~depo_indices]
+            k_cp = k_cp[~depo_indices]
+
         return pos_cp, vel_cp, i_cp, j_cp, k_cp
     
+    def depo_position(self, pos, vel):
+        PosVel = np.concatenate((pos, vel), axis=1)
+        self.depo_pos = np.vstack((self.depo_pos, PosVel))
+
     def getAcc_sparse(self, pos, vel):
 
         dx = self.celllength # 0.3/cellsize
         start_x = -self.chamberX
         start_y = -self.chamberY
         pos_cp = pos
-
         vel_cp = vel
         tStep_cp = self.tstep
 
-        i = np.floor((pos_cp[:, 0] - start_x) / dx + 0.5).astype(int)
-        j = np.floor((pos_cp[:, 1] - start_y) / dx + 0.5).astype(int)
-        k = np.floor(pos_cp[:, 2] / dx + 0.5).astype(int)
+        i = np.floor((pos_cp[:, 0] - start_x) / dx  + 0.5).astype(int)
+        j = np.floor((pos_cp[:, 1] - start_y) / dx  + 0.5).astype(int)
+        k = np.floor(pos_cp[:, 2] / dx  + 0.5).astype(int)
 
         pos_cp, Nvel_cp, i, j, k = self.boundary(pos_cp, vel_cp, i, j, k)
 
@@ -178,5 +201,5 @@ class transport:
                     Time.sleep(0.01)
                     # 更新发呆进度
                     pbar.update(1)
-        return collList, elist, p1, v1
+        return collList, elist, self.depo_pos[1:]
     

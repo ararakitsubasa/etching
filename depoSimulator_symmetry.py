@@ -259,11 +259,9 @@ class depo:
 
         return result
     
-    def run(self, step, seed, Ero_dist_x, Ero_dist_y):
-        filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
-        velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, filmMac[0])
-
+    def run_afterCollision(self, step, seed, velosity_matrix):
+        weights = np.ones(velosity_matrix.shape[0])
+        depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
         return depoFilm
     
     def runDepoition(self, step, seed, N, weight):
