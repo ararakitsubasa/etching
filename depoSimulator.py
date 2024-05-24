@@ -20,6 +20,7 @@ class depo:
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
+        self.depo_pos = np.zeros((1,6))
 
     def rfunc(self,x): #Release factor function
         # print("-------rfunc------")
@@ -135,6 +136,9 @@ class depo:
 
         pos_1 = pos[indice_inject]
         # print(pos_1)
+        if np.any(indice_inject):
+            self.depo_position(pos[indice_inject], vel[indice_inject])
+
 
         surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
@@ -169,6 +173,10 @@ class depo:
 
         return film, pos, vel, weights_arr
 
+    def depo_position(self, pos, vel):
+        PosVel = np.concatenate((pos, vel), axis=1)
+        self.depo_pos = np.vstack((self.depo_pos, PosVel))
+
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep):
         dx = boxsize
 
@@ -177,9 +185,9 @@ class depo:
 
         tStep_cp = tStep
 
-        i = np.floor((pos_cp[:, 0]+0.5) / dx).astype(int)
-        j = np.floor((pos_cp[:, 1]+0.5) / dx).astype(int)
-        k = np.floor((pos_cp[:, 2]+0.5) / dx).astype(int)
+        i = np.floor((pos_cp[:, 0]) / dx).astype(int)
+        j = np.floor((pos_cp[:, 1]) / dx).astype(int)
+        k = np.floor((pos_cp[:, 2]) / dx).astype(int)
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
@@ -256,7 +264,7 @@ class depo:
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
         depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
 
-        return depoFilm
+        return depoFilm, self.depo_pos[1:]
     
     def coverage(self, step, seed, Ero_dist_x, Ero_dist_y):
         depoFilm = self.run(step, seed, Ero_dist_x, Ero_dist_y)

@@ -155,7 +155,7 @@ class depo:
             print(k.max())
 
         pos_1 = pos[indice_inject]
-        # print(pos_1)
+        print(pos_1.shape[0])
 
         surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
@@ -188,7 +188,7 @@ class depo:
         surface_film = np.logical_and(film >= 1, film < 2)
         film[surface_film] = 20
 
-        return film, pos, vel, weights_arr
+        return film, pos, vel, weights_arr, pos_1.shape[0]
 
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep):
         dx = boxsize
@@ -205,11 +205,11 @@ class depo:
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo
+        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count
 
     def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
 
@@ -235,6 +235,7 @@ class depo:
                 v1 = p2v2[0][1]
                 film_1 = p2v2[2]
                 weights_arr_1 = p2v2[3]
+                depo_count = p2v2[4]
                 t += tstep
                 p1 = p2
                 v1 = v2
@@ -243,6 +244,10 @@ class depo:
                     Time.sleep(0.01)
                     # 更新发呆进度
                     pbar.update(1)
+                if depo_count < 10 and i > 200:
+                    tstep = self.timeStep * 10
+                elif depo_count > 200 and i < 1000:
+                    tstep = self.timeStep / 10
                 # if i % (int((tmax/tstep)/20)) == 0:
                 #     Time.sleep(0.01)
                 #     # 更新发呆进度

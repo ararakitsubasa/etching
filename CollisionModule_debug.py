@@ -103,7 +103,7 @@ class transport:
         energy = 0.5*self.Al_m*vMag**2/self.q
         vMagnew = vMag
         theta0 = np.arccos(v[:, 2]/vMag)
-        phi0= np.arctan(v[:, 1]/v[:, 0])
+        phi0= np.arctan(v[:, 0]/v[:, 1])
         chi = self.DCS_pdf(energy)
         # chi = np.arccos(1-2*r/(1+8*(energy/27.21)*(1-r)))
         phi = 2*np.pi*np.random.rand()
@@ -159,11 +159,11 @@ class transport:
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
-                delx = np.linalg.norm(p1 - p2, axis=1)
-                vMag = np.linalg.norm(v1, axis=1)
-                KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
-                collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
+                # delx = np.linalg.norm(p1 - p2, axis=1)
+                # vMag = np.linalg.norm(v1, axis=1)
+                # KE = 0.5*self.Al_m*vMag**2/self.q
+                # prob = self.collProb(self.ng_pa, KE, delx)
+                # collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
                 t += self.tstep
                 p1 = p2
                 v1 = v2
