@@ -104,11 +104,18 @@ class transport:
         vMagnew = vMag
         theta0 = np.arccos(v[:, 2]/vMag)
         phi0= np.arctan(v[:, 1]/v[:, 0])
-        chi = self.DCS_pdf(energy)
+        # phi0 = np.arccos(v[:, 2]/vMag)
+        # theta0= np.arctan(v[:, 1]/v[:, 0])
+        # chi = self.DCS_pdf(energy)
+        N = energy.shape[0]
+        cos_chi = np.random.rand(N)*2 -1
+        sin_chi = np.sqrt(1-cos_chi**2)*np.random.choice([-1, 1], size=N)
         # chi = np.arccos(1-2*r/(1+8*(energy/27.21)*(1-r)))
         phi = 2*np.pi*np.random.rand()
         m1m2 = self.rotate_matrix(phi0, theta0)
-        rotateAngle = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
+        # rotateAngle = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
+        # rotateAngle = np.array([np.cos(chi), np.sin(chi)*np.sin(phi), np.sin(chi)*np.cos(phi)])
+        rotateAngle = np.array([cos_chi, sin_chi*np.cos(phi), sin_chi*np.sin(phi)])
         dot_products = np.einsum('...ij,...i->...j', m1m2, rotateAngle.T)
 
         newVel = dot_products * vMagnew[:, np.newaxis]
