@@ -30,7 +30,7 @@ __pycache__/depoSimulator.cpython-311.pyc
 depo*.cpython-*.pyc
 depoDemo*.ipynb
 etchingDemo*.ipynb
-transport_Al_Ar*.ipynb
+transport_Al_Ar_TS6*.ipynb
 *.npz
 *.npy
 *.vti
