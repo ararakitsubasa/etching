@@ -2,6 +2,7 @@ import numpy as np
 import time as Time
 from tqdm import tqdm, trange
 from scipy.special import gamma, factorial
+from scipy.spatial.transform import Rotation as R
 
 class transport:
     def __init__(self, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec):
@@ -99,28 +100,21 @@ class transport:
         return chi
 
     def newVel_gpu(self, v, vMag):
-
         energy = 0.5*self.Al_m*vMag**2/self.q
+        pN = energy.shape[0]
         vMagnew = vMag
-        theta0 = np.arccos(v[:, 2]/vMag)
+        vfilp = np.ones(v.shape[0])
+        filp_indice = np.array(v[:, 0] < 0)
+        vfilp[filp_indice] = -1
+        theta0 = np.arccos(v[:, 2]/vMag)*vfilp
         phi0= np.arctan(v[:, 1]/v[:, 0])
-        # phi0 = np.arccos(v[:, 2]/vMag)
-        # theta0= np.arctan(v[:, 1]/v[:, 0])
-        # chi = self.DCS_pdf(energy)
-        N = energy.shape[0]
-        cos_chi = np.random.rand(N)*2 -1
-        sin_chi = np.sqrt(1-cos_chi**2)*np.random.choice([-1, 1], size=N)
-        # chi = np.arccos(1-2*r/(1+8*(energy/27.21)*(1-r)))
-        phi = 2*np.pi*np.random.rand()
-        m1m2 = self.rotate_matrix(phi0, theta0)
-        # rotateAngle = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
-        # rotateAngle = np.array([np.cos(chi), np.sin(chi)*np.sin(phi), np.sin(chi)*np.cos(phi)])
-        rotateAngle = np.array([cos_chi, sin_chi*np.cos(phi), sin_chi*np.sin(phi)])
-        dot_products = np.einsum('...ij,...i->...j', m1m2, rotateAngle.T)
-
-        newVel = dot_products * vMagnew[:, np.newaxis]
-
-        return newVel
+        chi = self.DCS_pdf(energy)
+        phi = 2*np.pi*np.random.rand(pN)
+        rotateMat = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
+        Vrotate = np.multiply(rotateMat, vMagnew).T
+        rz = R.from_matrix(self.rotate_matrix(phi0, theta0))
+        v_rotate = rz.apply(Vrotate)
+        return v_rotate 
 
     def addPtToList(self, pt, colltype, colltype_list, ionPos_list):
         colltype_list = np.hstack((colltype_list, colltype))

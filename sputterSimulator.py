@@ -221,15 +221,12 @@ class Sputter:
         colltype[IonE] = 3
 
         return colltype
-
-
+   
     def newVel_gpu(self, v, colltype, vMag):
-        # m = 9.11*10**-31
-        # q = 1.6*10**-19
-        energy = 0.5*self.m*vMag**2/-self.q
+        energy = 0.5*self.Al_m*vMag**2/self.q
 
         a = np.where(colltype == 1)
-        energy[a] -= 1
+        energy[a] -= 0
 
         b = np.where(colltype == 2)
         energy[b] -= 12
@@ -237,20 +234,22 @@ class Sputter:
         c = np.where(colltype == 3)
         energy[c] -= 16
 
+        pN = energy.shape[0]
         vMagnew = (2*energy*-self.q/self.m)**0.5
-        theta0 = np.arccos(v[:, 2]/vMag)
+        vfilp = np.ones(v.shape[0])
+        filp_indice = np.array(v[:, 0] < 0)
+        vfilp[filp_indice] = -1
+        theta0 = np.arccos(v[:, 2]/vMag)*vfilp
         phi0= np.arctan(v[:, 1]/v[:, 0])
-        r = np.random.rand()
+        r = np.random.rand(pN)
         chi = np.arccos(1-2*r/(1+8*(energy/27.21)*(1-r)))
-        phi = 2*np.pi*np.random.rand()
-        m1m2 = self.rotate_matrix(phi0, theta0)
-        rotateAngle = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
-        dot_products = np.einsum('...ij,...i->...j', m1m2, rotateAngle.T)
-
-        newVel = dot_products * vMagnew[:, np.newaxis]
-
-        return newVel
-
+        phi = 2*np.pi*np.random.rand(pN)
+        rotateMat = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
+        Vrotate = np.multiply(rotateMat, vMagnew).T
+        rz = R.from_matrix(self.rotate_matrix(phi0, theta0))
+        v_rotate = rz.apply(Vrotate)
+        return v_rotate 
+    
     def addPtToList(self, pt, colltype, colltype_list, ionPos_list):
         colltype_list = np.hstack((colltype_list, colltype))
         indice = np.nonzero(colltype == 3)
