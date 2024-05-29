@@ -245,9 +245,9 @@ class depo:
                     # 更新发呆进度
                     pbar.update(1)
                 if depo_count < 10 and i > 200:
-                    tstep = self.timeStep * 10
+                    tstep *= 10
                 elif depo_count > 200 and i < 1000:
-                    tstep = self.timeStep / 10
+                    tstep /= 10
                 # if i % (int((tmax/tstep)/20)) == 0:
                 #     Time.sleep(0.01)
                 #     # 更新发呆进度
@@ -264,8 +264,8 @@ class depo:
 
         return result
     
-    def run_afterCollision(self, step, seed, velosity_matrix):
-        weights = np.ones(velosity_matrix.shape[0])
+    def run_afterCollision(self, step, seed, velosity_matrix, weight):
+        weights = np.ones(velosity_matrix.shape[0])*weight
         depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
         return depoFilm
     
