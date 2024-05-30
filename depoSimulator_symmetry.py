@@ -245,11 +245,10 @@ class depo:
                 t += tstep
                 p1 = p2
                 v1 = v2
-                i += 1
-                if i % (int((tmax/tstep)/100)) == 0:
+                if int(t/tmax*100) > i:
                     Time.sleep(0.01)
-                    # 更新发呆进度
                     pbar.update(1)
+                    i += 1
                 if depo_count < 10 and i > 200:
                     tstep *= 10
                 elif depo_count > 200 and i < 1000:
