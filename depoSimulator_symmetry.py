@@ -148,7 +148,9 @@ class depo:
             j_cp[indiceYMin] += cellSize_y_cp
             pos_cp[indiceYMin,1] += self.celllength*self.cellSizeY
 
-        indices = np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
+        indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp < 0)
+        indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp < 0)
+        indices |= np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
 
         if np.any(indices):
             pos_cp = pos_cp[~indices]
@@ -203,7 +205,9 @@ class depo:
             k = k[~indice_inject]
             weights_arr = weights_arr[~indice_inject]
 
-        film_max = film.max()
+        film_indepo_indice = np.logical_or(film == 10, film == 20)
+        film_indepo = film[~film_indepo_indice]
+        film_max = film_indepo.max()
         surface_film = np.logical_and(film >= 1, film < 2)
         film[surface_film] = 20
 
