@@ -3,9 +3,10 @@ import numpy as np
 from scipy.spatial import KDTree
 import time as Time
 from tqdm import tqdm, trange
+import logging
 
 class depo:
-    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep):
+    def __init__(self, param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, logname):
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
@@ -21,6 +22,11 @@ class depo:
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
+        logging.basicConfig(filename='./logfiles/{}.log'.format(logname),
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
 
     def rfunc(self,x): #Release factor function
         # print("-------rfunc------")
@@ -155,7 +161,7 @@ class depo:
             print(k.max())
 
         pos_1 = pos[indice_inject]
-        print(pos_1.shape[0])
+        # print(pos_1.shape[0])
 
         surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
@@ -248,6 +254,8 @@ class depo:
                     tstep *= 10
                 elif depo_count > 200 and i < 1000:
                     tstep /= 10
+
+                logging.info('runStep:{}, timeStep:{}, depo_count:{}'.format(i, tstep, depo_count))
                 # if i % (int((tmax/tstep)/20)) == 0:
                 #     Time.sleep(0.01)
                 #     # 更新发呆进度
