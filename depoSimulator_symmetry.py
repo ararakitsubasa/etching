@@ -22,11 +22,23 @@ class depo:
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
-        logging.basicConfig(filename='./logfiles/{}.log'.format(logname),
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
+        self.log = logging.getLogger()
+        self.log.setLevel(logging.INFO)
+        self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
+        self.fh.setLevel(logging.INFO)
+        self.formatter = logging.Formatter(
+                    fmt='%(asctime)s %(levelname)s: %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                    )
+        self.fh.setFormatter(self.formatter)
+        self.log.addHandler(self.fh)
+        self.log.info('-------Start--------')
+
+        # self.log.basicConfig(filename='./logfiles/{}.log'.format(logname),
+        #             filemode='w',
+        #             format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+        #             datefmt='%m/%d/%Y %I:%M:%S %p',
+        #             level=logging.DEBUG)
 
     def rfunc(self,x): #Release factor function
         # print("-------rfunc------")
@@ -191,10 +203,11 @@ class depo:
             k = k[~indice_inject]
             weights_arr = weights_arr[~indice_inject]
 
+        film_max = film.max()
         surface_film = np.logical_and(film >= 1, film < 2)
         film[surface_film] = 20
 
-        return film, pos, vel, weights_arr, pos_1.shape[0]
+        return film, pos, vel, weights_arr, pos_1.shape[0], film_max
 
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep):
         dx = boxsize
@@ -211,11 +224,11 @@ class depo:
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count
+        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
     def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
 
@@ -239,9 +252,12 @@ class depo:
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
+                vMag = np.linalg.norm(v1, axis=1)
+                vMax = vMag.max()
                 film_1 = p2v2[2]
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
+                film_max = p2v2[5]
                 t += tstep
                 p1 = p2
                 v1 = v2
@@ -249,16 +265,15 @@ class depo:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-                if depo_count < 10 and i > 200:
-                    tstep *= 10
-                elif depo_count > 200 and i < 1000:
-                    tstep /= 10
+                vzMax = np.abs(v1[:,2]).max()
+                # if vMax*tstep < 0.1 and i > 2:
+                if vzMax*tstep < 0.3:                    
+                    tstep *= 2
+                elif vzMax*tstep > 1:
+                    tstep /= 2
 
-                logging.info('runStep:{}, timeStep:{}, depo_count:{}'.format(i, tstep, depo_count))
-                # if i % (int((tmax/tstep)/20)) == 0:
-                #     Time.sleep(0.01)
-                #     # 更新发呆进度
-                #     pbar.update(5)
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'.format(i, tstep, depo_count, vMax*tstep, vzMax*tstep, film_max))
+        del self.log, self.fh
 
         return film
     
