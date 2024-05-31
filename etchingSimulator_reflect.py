@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial import KDTree
 import time as Time
 from tqdm import tqdm, trange
-import reflect_module
+import surface_normalize
 
 class etching:
     def __init__(self, param, TS, N, sub_xy, film, n, cellSize):
@@ -234,9 +234,9 @@ class etching:
 
         tStep_cp = tStep
 
-        i = np.floor((pos_cp[:, 0]+0.5) / dx).astype(int)
-        j = np.floor((pos_cp[:, 1]+0.5) / dx).astype(int)
-        k = np.floor((pos_cp[:, 2]+0.5) / dx).astype(int)
+        i = np.floor((pos_cp[:, 0]/dx) + 0.5).astype(int)
+        j = np.floor((pos_cp[:, 1]/dx) + 0.5).astype(int)
+        k = np.floor((pos_cp[:, 2]/dx) + 0.5).astype(int)
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
@@ -258,7 +258,7 @@ class etching:
         weights_arr_1 = weights_arr
         
         cell = 1
-        initReflect = reflect_module.reflect(center_with_direction=np.array([[100,100,50], [100, 100, 0]]), range3D=np.array([[0, 100, 0, 100, 10, 100], [0, 100, 0, 100, 0, 10]]), InOrOut=[1, 1])
+        initReflect = surface_normalize.surface_normal(center_with_direction=np.array([[100,100,50], [100, 100, 0]]), range3D=np.array([[0, 100, 0, 100, 10, 100], [0, 100, 0, 100, 0, 10]]), InOrOut=[1, 1])
         planes = initReflect.get_pointcloud(film_1)
         count_etching = 0
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:

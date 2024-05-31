@@ -4,9 +4,8 @@ from scipy.spatial import KDTree
 from scipy import interpolate
 import math
 from math import pi
-import time as Time
 
-class reflect:
+class surface_normal:
     def __init__(self, center_with_direction, range3D, InOrOut, yield_hist = None):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
