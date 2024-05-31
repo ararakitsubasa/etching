@@ -175,7 +175,8 @@ class depo(transport):
         weights_arr_1 = weights_arr
 
         cell = self.celllength
-
+        collList = np.array([])
+        elist = np.array([[0, 0, 0]])
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
@@ -186,21 +187,19 @@ class depo(transport):
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
-                vMag = np.linalg.norm(v1, axis=1)
-                vMax = vMag.max()
                 film_1 = p2v2[2]
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
                 film_max = p2v2[5]
-                p1 = p2
-                v1 = v2
                 delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
+                vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
                 prob = self.collProb(self.ng_pa, KE, delx)
                 collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
                 t += tstep
-
+                p1 = p2
+                v1 = v2
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
@@ -215,7 +214,7 @@ class depo(transport):
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'.format(i, tstep, depo_count, vMax*tstep, vzMax*tstep, film_max))
         del self.log, self.fh
 
-        return film
+        return film, collList, elist
     
     def stepRundepo(self, step, randomSeed, velosityDist, weights):
 
@@ -232,9 +231,6 @@ class depo(transport):
         return depoFilm
     
     def runDepoition(self, step, seed, N, weight):
-        # filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
-        # velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
-        # N = int(631394)
         weights = np.ones(N)*weight
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
