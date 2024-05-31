@@ -22,6 +22,7 @@ class transport:
         self.chamberY = chamberSize[1]
         self.DXsec = DXsec
         self.depo_pos = np.zeros((1,6))
+        self.setXsec(energy_range=[0, 50, 50])
 
      
     def diVr_func(self, d_refi, eVr, wi):

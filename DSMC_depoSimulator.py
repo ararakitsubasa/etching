@@ -109,7 +109,7 @@ class depo(transport):
 
         surface_depo = np.logical_and(film >= 0, film < 1) # depo
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
-        surface_tree = KDTree(np.argwhere(surface_depo == True))
+        surface_tree = KDTree(np.argwhere(surface_depo == True)*self.celllength)
 
         dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=1)
 
@@ -206,9 +206,9 @@ class depo(transport):
                     i += 1
                 vzMax = np.abs(v1[:,2]).max()
                 # if vMax*tstep < 0.1 and i > 2:
-                if vzMax*tstep < 0.3:                    
+                if vzMax*tstep < 0.3*self.celllength:                    
                     tstep *= 2
-                elif vzMax*tstep > 1:
+                elif vzMax*tstep > 1*self.celllength:
                     tstep /= 2
 
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'.format(i, tstep, depo_count, vMax*tstep, vzMax*tstep, film_max))
@@ -216,18 +216,19 @@ class depo(transport):
 
         return film, collList, elist
     
-    def stepRundepo(self, step, randomSeed, velosityDist, weights):
+    def stepRundepo(self, step, randomSeed, tmax, velosityDist, weights):
 
         for i in range(step):
             np.random.seed(randomSeed+i)
             position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, np.random.rand(self.N)*self.cellSizeY, np.random.uniform(0, 10, self.N)+ self.cellSizeZ - 10]).T
-            result =  self.runDepo(position_matrix, velosityDist, 1, self.substrate, weights, depoStep=i+1)
+            position_matrix *= self.celllength
+            result =  self.runDepo(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
 
         return result
     
-    def run_afterCollision(self, step, seed, velosity_matrix, weight):
+    def run_afterCollision(self, step, seed, tmax, velosity_matrix, weight):
         weights = np.ones(velosity_matrix.shape[0])*weight
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
+        depoFilm = self.stepRundepo(step, seed, tmax, velosity_matrix, weights)
         return depoFilm
     
     def runDepoition(self, step, seed, N, weight):
