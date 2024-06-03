@@ -96,7 +96,8 @@ class etching(transport, surface_normal):
     def etching_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes):
 
         try:
-            indice_inject = np.array(film[i, j, k] > 5)
+            # indice_inject = np.array(film[i, j, k] > 5)
+            indice_inject = np.array(film[i, j, k] < 0) #etching
         except IndexError:
             print('get i out:{}'.format(i.max()))
             print(i.max())
@@ -133,7 +134,7 @@ class etching(transport, surface_normal):
             k1 = surface_indice[ii][:,kdi,2]
 
             # deposit the particle injected into the film
-            film[i1,j1,k1] += weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
+            film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
 
         # delete the particle injected into the film
         if np.any(indice_inject):
@@ -175,7 +176,7 @@ class etching(transport, surface_normal):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, cut_theta_high
 
-    def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
+    def runEtch(self, p0, v0, time, film, weights_arr, depoStep):
 
         tmax = time
         tstep = self.timeStep
@@ -234,32 +235,36 @@ class etching(transport, surface_normal):
                     tstep /= 2
 
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, count_etching))
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, cut_theta_high))
         del self.log, self.fh
 
         return film, collList, elist
     
-    def stepRundepo(self, step, randomSeed, tmax, velosityDist, weights):
+    def stepRunEtch(self, step, randomSeed, tmax, velosityDist, weights):
 
         for i in range(step):
             np.random.seed(randomSeed+i)
             position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, np.random.rand(self.N)*self.cellSizeY, np.random.uniform(0, 10, self.N)+ self.cellSizeZ - 10]).T
             position_matrix *= self.celllength
-            result =  self.runDepo(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
+            result =  self.runEtch(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
 
         return result
     
     def run_afterCollision(self, step, seed, tmax, velosity_matrix, weight):
         weights = np.ones(velosity_matrix.shape[0])*weight
-        depoFilm = self.stepRundepo(step, seed, tmax, velosity_matrix, weights)
+        depoFilm = self.stepRunEtch(step, seed, tmax, velosity_matrix, weights)
         return depoFilm
     
-    def runDepoition(self, step, seed, N, weight):
+
+    def runEtching(self, step, seed, tmax, N, weight):
+        # filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
+        # velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
+        # N = int(631394)
         weights = np.ones(N)*weight
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
+        depoFilm = self.stepRunEtch(step, seed, tmax, velosity_matrix, weights)
 
         return depoFilm
