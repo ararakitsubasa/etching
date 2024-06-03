@@ -40,8 +40,6 @@ class etching(transport, surface_normal):
         self.log.addHandler(self.fh)
         self.log.info('-------Start--------')
 
-
-
     def max_velocity_u(self, random1, random2):
         return self.Cm*np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))**self.n
 
@@ -95,7 +93,7 @@ class etching(transport, surface_normal):
 
         return pos_cp, vel_cp, i_cp, j_cp, k_cp, weights_arr_cp
 
-    def depo_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes, initReflect):
+    def etching_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes):
 
         try:
             indice_inject = np.array(film[i, j, k] > 5)
@@ -110,14 +108,15 @@ class etching(transport, surface_normal):
         pos_1 = pos[indice_inject]
         vel_1 = vel[indice_inject]
         # print(pos_1.shape[0])
-        get_theta = initReflect.get_inject_theta(planes, pos_1, vel_1)
+        get_theta = self.get_inject_theta(planes, pos_1, vel_1)
         get_theta = -get_theta + np.pi
         cut_theta_low = np.where(get_theta >= 0, get_theta, np.abs(get_theta))
         cut_theta_high = np.where(cut_theta_low < np.pi/2, cut_theta_low, -cut_theta_low + np.pi)
         # print(cut_theta_high.shape)
-        etch_yield = initReflect.get_yield(cut_theta_high)
+        etch_yield = self.get_yield(cut_theta_high)
 
-        surface_depo = np.logical_and(film >= 0, film < 1) # depo
+        # surface_depo = np.logical_and(film >= 0, film < 1) # depo
+        surface_depo = np.logical_and(film < 0, film > -100) #etching
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
         surface_tree = KDTree(np.argwhere(surface_depo == True)*self.celllength)
 
@@ -148,12 +147,14 @@ class etching(transport, surface_normal):
         film_indepo_indice = np.logical_or(film == 10, film == 20)
         film_indepo = film[~film_indepo_indice]
         film_max = film_indepo.max()
-        surface_film = np.logical_and(film >= 1, film < 2)
-        film[surface_film] = 20
+        # surface_film = np.logical_and(film >= 1, film < 2) #depo
+        # film[surface_film] = 20
+        surface_film = np.logical_and(film >= -11, film < -10)
+        film[surface_film] = int(-100*depoStep)
 
-        return film, pos, vel, weights_arr, pos_1.shape[0], film_max
+        return film, pos, vel, weights_arr, pos_1.shape[0], film_max, cut_theta_high.shape[0]
 
-    def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep):
+    def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes):
         dx = boxsize
 
         pos_cp = pos
@@ -168,11 +169,11 @@ class etching(transport, surface_normal):
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max, cut_theta_high = self.etching_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
+        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, cut_theta_high
 
     def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
 
@@ -185,12 +186,23 @@ class etching(transport, surface_normal):
         weights_arr_1 = weights_arr
 
         cell = self.celllength
+        planes = self.get_pointcloud(film)
+        count_etching = 0
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep)
+                p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep, planes)
+
+                cut_theta_high = p2v2[6]
+                count_etching += cut_theta_high
+                if count_etching >= 100:
+                    count_etching = 0
+                    planes = self.get_pointcloud(film_1)
+                if cut_theta_high <= 10 and i > 20:
+                    break
+
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
                     break
@@ -221,7 +233,8 @@ class etching(transport, surface_normal):
                 elif vzMax*tstep > 1*self.celllength:
                     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'.format(i, tstep, depo_count, vMax*tstep, vzMax*tstep, film_max))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, count_etching))
         del self.log, self.fh
 
         return film, collList, elist
