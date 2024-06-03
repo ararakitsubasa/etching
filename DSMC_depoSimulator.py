@@ -211,7 +211,8 @@ class depo(transport):
                 elif vzMax*tstep > 1*self.celllength:
                     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'.format(i, tstep, depo_count, vMax*tstep, vzMax*tstep, film_max))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max))
         del self.log, self.fh
 
         return film, collList, elist

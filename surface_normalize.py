@@ -20,19 +20,52 @@ class surface_normal:
             self.yield_hist = yield_hist
         self.yield_func = interpolate.interp1d(self.yield_hist[1], self.yield_hist[0], kind='quadratic')
 
-    def scanZ(self, film):
-        xshape = film.shape[0]
-        yshape = film.shape[1]
-        zshape = film.shape[2]
+    # def scanZ(self, film):
+    #     xshape = film.shape[0]
+    #     yshape = film.shape[1]
+    #     zshape = film.shape[2]
+    #     surface_sparse = torch.zeros((xshape, yshape, zshape))
+    #     # print(zshape)
+    #     for i in range(zshape-1):
+    #         for j in range(xshape-1):
+    #             for k in range(yshape-1):
+    #                 if (film[j, k, i] == 0 and film[j, k, i-1] != 0) or (film[j, k, i] == 0 and film[j, k, i+1] != 0) \
+    #                 or (film[j, k, i] == 0 and film[j-1, k, i] != 0) or (film[j, k, i] == 0 and film[j+1, k, i] != 0) \
+    #                 or (film[j, k, i] == 0 and film[j, k-1, i] != 0) or (film[j, k, i] == 0 and film[j, k+1, i] != 0):
+    #                     surface_sparse[j,k,i] = 1
+    #     return surface_sparse.to_sparse()
+    
+    def scanZ(self, film): # fast scanZ
+        film = torch.Tensor(film)
+        xshape, yshape, zshape = film.shape
+        
+        # 初始化一个全零的表面稀疏张量
         surface_sparse = torch.zeros((xshape, yshape, zshape))
-        # print(zshape)
-        for i in range(zshape-1):
-            for j in range(xshape-1):
-                for k in range(yshape-1):
-                    if (film[j, k, i] == 0 and film[j, k, i-1] != 0) or (film[j, k, i] == 0 and film[j, k, i+1] != 0) \
-                    or (film[j, k, i] == 0 and film[j-1, k, i] != 0) or (film[j, k, i] == 0 and film[j+1, k, i] != 0) \
-                    or (film[j, k, i] == 0 and film[j, k-1, i] != 0) or (film[j, k, i] == 0 and film[j, k+1, i] != 0):
-                        surface_sparse[j,k,i] = 1
+        
+        # 获取当前平面与前后平面的布尔索引
+        current_plane = film == 0
+        prev_plane = torch.zeros_like(film)
+        next_plane = torch.zeros_like(film)
+        
+        prev_plane[:, :, 1:] = film[:, :, :-1]
+        next_plane[:, :, :-1] = film[:, :, 1:]
+        
+        # 获取周围邻居的布尔索引
+        neighbors = torch.zeros_like(film, dtype=torch.bool)
+        
+        neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面
+        neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面
+        neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边
+        neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边
+        neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面
+        neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面
+        
+        # 获取满足条件的索引
+        condition = (current_plane & (prev_plane != 0)) | (current_plane & (next_plane != 0)) | (current_plane & neighbors)
+        
+        # 更新表面稀疏张量
+        surface_sparse[condition] = 1
+        
         return surface_sparse.to_sparse()
     
     def normalconsistency_3D_real(self, planes):
