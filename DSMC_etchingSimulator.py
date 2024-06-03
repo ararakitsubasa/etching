@@ -201,7 +201,7 @@ class etching(transport, surface_normal):
                 if count_etching >= 100:
                     count_etching = 0
                     planes = self.get_pointcloud(film_1)
-                if cut_theta_high <= 10 and i > 20:
+                if cut_theta_high <= 10 and i > 40:
                     break
 
                 p2 = p2v2[1][0]
