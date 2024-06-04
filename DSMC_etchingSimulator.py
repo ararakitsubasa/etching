@@ -115,7 +115,8 @@ class etching(transport, surface_normal):
         cut_theta_high = np.where(cut_theta_low < np.pi/2, cut_theta_low, -cut_theta_low + np.pi)
         # print(cut_theta_high.shape)
         etch_yield = self.get_yield(cut_theta_high)
-
+        # print(etch_yield)
+        # print(etch_yield.shape)
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
         surface_depo = np.logical_and(film < 0, film > -100) #etching
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
@@ -145,15 +146,16 @@ class etching(transport, surface_normal):
             k = k[~indice_inject]
             weights_arr = weights_arr[~indice_inject]
 
-        film_indepo_indice = np.logical_or(film == 10, film == 20)
+        film_indepo_indice = np.logical_or(film == -10, film == -100)
+        film_indepo_indice |= np.array(film == -50)
         film_indepo = film[~film_indepo_indice]
-        film_max = film_indepo.max()
+        film_min = film_indepo.min()
         # surface_film = np.logical_and(film >= 1, film < 2) #depo
         # film[surface_film] = 20
         surface_film = np.logical_and(film >= -11, film < -10)
         film[surface_film] = int(-100*depoStep)
 
-        return film, pos, vel, weights_arr, pos_1.shape[0], film_max, cut_theta_high.shape[0]
+        return film, pos, vel, weights_arr, pos_1.shape[0], film_min, cut_theta_high.shape[0], etch_yield
 
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes):
         dx = boxsize
@@ -170,11 +172,12 @@ class etching(transport, surface_normal):
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max, cut_theta_high = self.etching_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes)
+        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max, cut_theta_high, etch_yield =\
+              self.etching_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes)
 
         Npos2_cp = Nvel_cp * tStep_cp + pos_cp
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, cut_theta_high
+        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, cut_theta_high, etch_yield
 
     def runEtch(self, p0, v0, time, film, weights_arr, depoStep):
 
@@ -213,7 +216,14 @@ class etching(transport, surface_normal):
                 film_1 = p2v2[2]
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
-                film_max = p2v2[5]
+                film_min = p2v2[5]
+                etch_yield = p2v2[7]
+                if etch_yield.shape[0] != 0:
+                    etch_yield_max = etch_yield.max()
+                    etch_yield_min = etch_yield.min()
+                else:
+                    etch_yield_max = 0
+                    etch_yield_min = 0
                 delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
                 vMax = vMag.max()
@@ -234,8 +244,8 @@ class etching(transport, surface_normal):
                 elif vzMax*tstep > 1*self.celllength:
                     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, cut_theta_high))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}, etch_yield_max:{}, etch_yield_min:{}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_min, cut_theta_high, etch_yield_max, etch_yield_min))
         del self.log, self.fh
 
         return film, collList, elist
