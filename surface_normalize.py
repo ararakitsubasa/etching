@@ -6,11 +6,12 @@ import math
 from math import pi
 
 class surface_normal:
-    def __init__(self, center_with_direction, range3D, InOrOut, yield_hist = None):
+    def __init__(self, center_with_direction, range3D, InOrOut, celllength, yield_hist = None):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
         # boundary x1x2 y1y2 z1z2
         self.range3D = range3D 
+        self.celllength = celllength
         # In for +1 out for -1
         self.InOrOut = InOrOut 
         if yield_hist.all() == None:
@@ -189,72 +190,72 @@ class surface_normal:
 
         return np.concatenate(planes_consist, axis=0) 
 
-    def get_pointcloud(self, film):
-        test = self.scanZ(film)
+    # def get_pointcloud(self, film):
+    #     test = self.scanZ(film)
 
-        points = test.indices().T
-        # print(points.shape)
+    #     points = test.indices().T
+    #     # print(points.shape)
 
-        surface_tree = KDTree(points)
-        dd, ii = surface_tree.query(points, k=18, workers=5)
+    #     surface_tree = KDTree(points)
+    #     dd, ii = surface_tree.query(points, k=18, workers=5)
 
-        pointsNP = points.numpy()
-
-
-        normal_all = np.zeros((ii.shape[0], 3))
-        for i in range(ii.shape[0]):
-            knn_pt = pointsNP[ii[i]]
-            # print(knn_pt.shape)
-            # xmn = np.mean(knn_pt[:,0], axis=1)
-            # ymn = np.mean(knn_pt[:,1], axis=1)
-            # zmn = np.mean(knn_pt[:,2], axis=1)
-            xmn = np.mean(knn_pt[:,0])
-            ymn = np.mean(knn_pt[:,1])
-            zmn = np.mean(knn_pt[:,2])
-
-            c=np.zeros((np.size(knn_pt,0),3))
-
-            c[:,0] = knn_pt[:,0]-xmn
-            c[:,1] = knn_pt[:,1]-ymn
-            c[:,2] = knn_pt[:,2]-zmn
-
-            cov=np.zeros((3,3))    
-
-            cov[0,0] = np.dot(c[:,0],c[:,0])
-            cov[0,1] = np.dot(c[:,0],c[:,1])
-            cov[0,2] = np.dot(c[:,0],c[:,2])
-
-            cov[1,0] = cov[0,1]
-            cov[1,1] = np.dot(c[:,1],c[:,1])
-            cov[1,2] = np.dot(c[:,1],c[:,2])
-
-            cov[2,0] = cov[0,2]
-            cov[2,1] = cov[1,2]
-            cov[2,2] = np.dot(c[:,2],c[:,2])
-
-            "Single value decomposition (SVD)"
-
-            u,s,vh = np.linalg.svd(cov) # U contains the orthonormal eigenvectors and S contains the eigenvectors
-
-            "Selection of minimum eigenvalue"
-
-            minevindex = np.argmin(s)
-
-            "Selection of orthogonal vector corresponing to this eigenvalue --> vector normal to the plane defined by the kpoints"
-
-            normal_vect = u[:,minevindex]
-            normal_all[i, :] = normal_vect
+    #     pointsNP = points.numpy()
 
 
-        planes=np.zeros((points.shape[0],6))
-        for i in range(points.shape[0]):
+    #     normal_all = np.zeros((ii.shape[0], 3))
+    #     for i in range(ii.shape[0]):
+    #         knn_pt = pointsNP[ii[i]]
+    #         # print(knn_pt.shape)
+    #         # xmn = np.mean(knn_pt[:,0], axis=1)
+    #         # ymn = np.mean(knn_pt[:,1], axis=1)
+    #         # zmn = np.mean(knn_pt[:,2], axis=1)
+    #         xmn = np.mean(knn_pt[:,0])
+    #         ymn = np.mean(knn_pt[:,1])
+    #         zmn = np.mean(knn_pt[:,2])
 
-            planes[i,0:3] = normal_all[i] #Keep the coordinates of the normal vectors
-            planes[i,3:6] = pointsNP[i] #Keep the coordinates of the centroid
+    #         c=np.zeros((np.size(knn_pt,0),3))
 
-        planes_consist = self.normalconsistency_3D_real(planes)
+    #         c[:,0] = knn_pt[:,0]-xmn
+    #         c[:,1] = knn_pt[:,1]-ymn
+    #         c[:,2] = knn_pt[:,2]-zmn
 
-        return planes_consist[0]
+    #         cov=np.zeros((3,3))    
+
+    #         cov[0,0] = np.dot(c[:,0],c[:,0])
+    #         cov[0,1] = np.dot(c[:,0],c[:,1])
+    #         cov[0,2] = np.dot(c[:,0],c[:,2])
+
+    #         cov[1,0] = cov[0,1]
+    #         cov[1,1] = np.dot(c[:,1],c[:,1])
+    #         cov[1,2] = np.dot(c[:,1],c[:,2])
+
+    #         cov[2,0] = cov[0,2]
+    #         cov[2,1] = cov[1,2]
+    #         cov[2,2] = np.dot(c[:,2],c[:,2])
+
+    #         "Single value decomposition (SVD)"
+
+    #         u,s,vh = np.linalg.svd(cov) # U contains the orthonormal eigenvectors and S contains the eigenvectors
+
+    #         "Selection of minimum eigenvalue"
+
+    #         minevindex = np.argmin(s)
+
+    #         "Selection of orthogonal vector corresponing to this eigenvalue --> vector normal to the plane defined by the kpoints"
+
+    #         normal_vect = u[:,minevindex]
+    #         normal_all[i, :] = normal_vect
+
+
+    #     planes=np.zeros((points.shape[0],6))
+    #     for i in range(points.shape[0]):
+
+    #         planes[i,0:3] = normal_all[i] #Keep the coordinates of the normal vectors
+    #         planes[i,3:6] = pointsNP[i] #Keep the coordinates of the centroid
+
+    #     planes_consist = self.normalconsistency_3D_real(planes)
+
+    #     return planes_consist[0]
     
     def get_pointcloud(self, film):
         test = self.scanZ(film)
@@ -296,7 +297,7 @@ class surface_normal:
         normal = plane[:, :3]
         velocity_normal = np.linalg.norm(vel, axis=1)
         velocity = np.divide(vel.T, velocity_normal).T
-        plane_tree = KDTree(plane_point)
+        plane_tree = KDTree(plane_point*self.celllength)
 
         dd, ii = plane_tree.query(pos, k=1, workers=1)
 

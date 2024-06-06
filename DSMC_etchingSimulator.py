@@ -12,7 +12,7 @@ class etching(transport, surface_normal):
                  center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
-        surface_normal.__init__(self, center_with_direction, range3D, InOrOut, yield_hist)
+        surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, yield_hist)
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
@@ -207,7 +207,7 @@ class etching(transport, surface_normal):
 
                 surface_true = p2v2[6]
                 count_etching += surface_true
-                if count_etching >= 1000:
+                if count_etching >= 200:
                     count_etching = 0
                     planes = self.get_pointcloud(film_1)
                 if surface_true <= 10 and i > 40:
@@ -225,8 +225,8 @@ class etching(transport, surface_normal):
                 film_min = p2v2[5]
                 etch_yield = p2v2[7]
                 if etch_yield.shape[0] != 0:
-                    etch_yield_max = etch_yield.max()
-                    etch_yield_min = etch_yield.min()
+                    etch_yield_large = np.sum(etch_yield >= 0.5)
+                    etch_yield_max = etch_yield_large/etch_yield.shape[0]
                 else:
                     etch_yield_max = 0
                     etch_yield_min = 0
@@ -250,8 +250,8 @@ class etching(transport, surface_normal):
                 elif vzMax*tstep > 1*self.celllength:
                     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}, etch_yield_max:{}, etch_yield_min:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_min, surface_true, etch_yield_max, etch_yield_min))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}, etch_yield_max:{:2.2%}, etch_yield_min:{:2.2%}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_min, surface_true, etch_yield_max, 1 - etch_yield_max))
         # del self.log, self.fh
 
         return film, collList, elist
