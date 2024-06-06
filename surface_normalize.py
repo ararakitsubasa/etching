@@ -68,73 +68,127 @@ class surface_normal:
         
         return surface_sparse.to_sparse()
     
+    # def normalconsistency_3D_real(self, planes):
+        
+    #     """
+        
+    #     This function checks wherer the normals are oriented towards the outside of the surface, i.e., it 
+    #     checks the consistency of the normals.
+    #     The function changes the direction of the normals that do not point towards the outside of the shape
+    #     The function checks whether the normals are oriented towards the centre of the ellipsoid, 
+    #     and if YES, then, it turns their orientation
+        
+    #     INPUTS:
+    #         planes: Vector N x 6, where M is the number of points whose normals and 
+    #         centroid have been calculated. the columns are the coordinates of the normals and the centroids
+            
+    #     OUTPUTS:
+    #         planesconsist: N x 6 array, where N is the number of points whose planes have been calculated. This array 
+    #         has all the planes normals pointing outside the surface.
+            
+    #     """
+        
+    #     nbnormals = np.size(planes, 0)
+    #     # planes_consist=np.zeros((nbnormals,6))
+    #     planes_consist = []
+    #     # planes_consist[:, 3:6] = planes[:, 3:6] # We just copy the columns corresponding to the coordinates of the centroids (from 3th to 5th)
+        
+    #     """ Try the atan2 function : https://uk.mathworks.com/help/vision/ref/pcnormals.html#buxdmoj"""
+        
+    #     # sensorcentre=np.array([0,0,0])
+    #     sensorcentre=np.array([100,100,0]) # vertax shape
+
+    #     for c in range(self.center_with_direction.shape[0]):
+    #         sensorcentre = self.center_with_direction[c]
+    #         sensorrange = self.range3D[c]
+    #         sensorInOut = self.InOrOut[c]
+    #         planes_in_range_indice  = np.logical_and(planes[:, 3] < sensorrange[0], planes[:, 3] >= sensorrange[1])
+    #         planes_in_range_indice  |= np.logical_and(planes[:, 4] < sensorrange[2], planes[:, 4] >= sensorrange[3])
+    #         planes_in_range_indice  |= np.logical_and(planes[:, 5] < sensorrange[4], planes[:, 5] >= sensorrange[5])
+    #         planes_in_range = planes[~planes_in_range_indice]
+
+    #         nbnormals_in_range = np.size(planes_in_range, 0)
+    #         planes_in_range_consist=np.zeros((nbnormals_in_range,6))
+    #         planes_in_range_consist[:, 3:6] = planes_in_range[:, 3:6]
+
+    #         for i in range(nbnormals_in_range):
+            
+    #             p1 = (sensorcentre - planes_in_range[i,3:6]) / np.linalg.norm(sensorcentre - planes_in_range[i,3:6]) # Vector from the centroid to the centre of the ellipsoid (here the sensor is placed)
+    #             p2 = planes_in_range[i,0:3]
+                
+    #             angle = math.atan2(np.linalg.norm(np.cross(p1,p2)), np.dot(p1,p2) ) # Angle between the centroid-sensor and plane normal
+            
+                
+    #             if (angle >= -pi/2 and angle <= pi/2): # (angle >= -pi/2 and angle <= pi/2):
+                    
+    #                 planes_in_range_consist[i,0] = -sensorInOut * planes_in_range[i,0]
+    #                 planes_in_range_consist[i,1] = -sensorInOut * planes_in_range[i,1]
+    #                 planes_in_range_consist[i,2] = -sensorInOut * planes_in_range[i,2]  
+                    
+    #             else:
+                    
+    #                 planes_in_range_consist[i,0] = sensorInOut * planes_in_range[i,0]
+    #                 planes_in_range_consist[i,1] = sensorInOut * planes_in_range[i,1]
+    #                 planes_in_range_consist[i,2] = sensorInOut * planes_in_range[i,2]
+                
+    #         planes_consist.append(planes_in_range_consist)
+            
+    #         return np.array(planes_consist)
+        
     def normalconsistency_3D_real(self, planes):
-        
         """
-        
-        This function checks wherer the normals are oriented towards the outside of the surface, i.e., it 
-        checks the consistency of the normals.
-        The function changes the direction of the normals that do not point towards the outside of the shape
-        The function checks whether the normals are oriented towards the centre of the ellipsoid, 
-        and if YES, then, it turns their orientation
+        This function checks whether the normals are oriented towards the outside of the surface, i.e., it 
+        checks the consistency of the normals. The function changes the direction of the normals that do not 
+        point towards the outside of the shape. The function checks whether the normals are oriented towards 
+        the centre of the ellipsoid, and if YES, then, it turns their orientation.
         
         INPUTS:
-            planes: Vector N x 6, where M is the number of points whose normals and 
-            centroid have been calculated. the columns are the coordinates of the normals and the centroids
+            planes: Vector N x 6, where N is the number of points whose normals and centroids have been calculated. 
+            The columns are the coordinates of the normals and the centroids.
             
         OUTPUTS:
-            planesconsist: N x 6 array, where N is the number of points whose planes have been calculated. This array 
+            planes_consist: N x 6 array, where N is the number of points whose planes have been calculated. This array 
             has all the planes normals pointing outside the surface.
-            
         """
         
         nbnormals = np.size(planes, 0)
-        # planes_consist=np.zeros((nbnormals,6))
         planes_consist = []
-        # planes_consist[:, 3:6] = planes[:, 3:6] # We just copy the columns corresponding to the coordinates of the centroids (from 3th to 5th)
-        
-        """ Try the atan2 function : https://uk.mathworks.com/help/vision/ref/pcnormals.html#buxdmoj"""
-        
-        # sensorcentre=np.array([0,0,0])
-        sensorcentre=np.array([100,100,0]) # vertax shape
+        sensorcentre = np.array([100, 100, 0])  # default value, will be updated in loop
 
         for c in range(self.center_with_direction.shape[0]):
             sensorcentre = self.center_with_direction[c]
             sensorrange = self.range3D[c]
             sensorInOut = self.InOrOut[c]
-            planes_in_range_indice  = np.logical_and(planes[:, 3] < sensorrange[0], planes[:, 3] >= sensorrange[1])
-            planes_in_range_indice  |= np.logical_and(planes[:, 4] < sensorrange[2], planes[:, 4] >= sensorrange[3])
-            planes_in_range_indice  |= np.logical_and(planes[:, 5] < sensorrange[4], planes[:, 5] >= sensorrange[5])
-            planes_in_range = planes[~planes_in_range_indice]
 
+            # Determine which planes are in range using broadcasting
+            in_range_mask = (
+                (planes[:, 3] < sensorrange[0]) & (planes[:, 3] >= sensorrange[1]) &
+                (planes[:, 4] < sensorrange[2]) & (planes[:, 4] >= sensorrange[3]) &
+                (planes[:, 5] < sensorrange[4]) & (planes[:, 5] >= sensorrange[5])
+            )
+
+            planes_in_range = planes[~in_range_mask]
             nbnormals_in_range = np.size(planes_in_range, 0)
-            planes_in_range_consist=np.zeros((nbnormals_in_range,6))
+            planes_in_range_consist = np.zeros((nbnormals_in_range, 6))
             planes_in_range_consist[:, 3:6] = planes_in_range[:, 3:6]
 
-            for i in range(nbnormals_in_range):
-            
-                p1 = (sensorcentre - planes_in_range[i,3:6]) / np.linalg.norm(sensorcentre - planes_in_range[i,3:6]) # Vector from the centroid to the centre of the ellipsoid (here the sensor is placed)
-                p2 = planes_in_range[i,0:3]
+            if nbnormals_in_range > 0:
+                p1 = (sensorcentre - planes_in_range[:, 3:6]) / np.linalg.norm(sensorcentre - planes_in_range[:, 3:6], axis=1)[:, None]
+                p2 = planes_in_range[:, 0:3]
                 
-                angle = math.atan2(np.linalg.norm(np.cross(p1,p2)), np.dot(p1,p2) ) # Angle between the centroid-sensor and plane normal
-            
-                
-                if (angle >= -pi/2 and angle <= pi/2): # (angle >= -pi/2 and angle <= pi/2):
-                    
-                    planes_in_range_consist[i,0] = -sensorInOut * planes_in_range[i,0]
-                    planes_in_range_consist[i,1] = -sensorInOut * planes_in_range[i,1]
-                    planes_in_range_consist[i,2] = -sensorInOut * planes_in_range[i,2]  
-                    
-                else:
-                    
-                    planes_in_range_consist[i,0] = sensorInOut * planes_in_range[i,0]
-                    planes_in_range_consist[i,1] = sensorInOut * planes_in_range[i,1]
-                    planes_in_range_consist[i,2] = sensorInOut * planes_in_range[i,2]
-                
+                cross_prod = np.cross(p1, p2)
+                dot_prod = np.einsum('ij,ij->i', p1, p2)
+                angles = np.arctan2(np.linalg.norm(cross_prod, axis=1), dot_prod)
+
+                flip_mask = (angles >= -np.pi/2) & (angles <= np.pi/2)
+
+                planes_in_range_consist[flip_mask, 0:3] = -sensorInOut * planes_in_range[flip_mask, 0:3]
+                planes_in_range_consist[~flip_mask, 0:3] = sensorInOut * planes_in_range[~flip_mask, 0:3]
+
             planes_consist.append(planes_in_range_consist)
-            
-            return np.array(planes_consist)
-        
+
+        return np.concatenate(planes_consist, axis=0) 
+
     def get_pointcloud(self, film):
         test = self.scanZ(film)
 
@@ -202,6 +256,40 @@ class surface_normal:
 
         return planes_consist[0]
     
+    def get_pointcloud(self, film):
+        test = self.scanZ(film)
+        points = test.indices().T
+        surface_tree = KDTree(points)
+        dd, ii = surface_tree.query(points, k=18, workers=5)
+
+        pointsNP = points.numpy()
+
+        # 计算所有点的均值
+        knn_pts = pointsNP[ii]
+        xmn = np.mean(knn_pts[:, :, 0], axis=1)
+        ymn = np.mean(knn_pts[:, :, 1], axis=1)
+        zmn = np.mean(knn_pts[:, :, 2], axis=1)
+
+        c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
+
+        # 计算协方差矩阵
+        cov = np.einsum('...ij,...ik->...jk', c, c)
+
+        # 单值分解 (SVD)
+        u, s, vh = np.linalg.svd(cov)
+
+        # 选择最小特征值对应的特征向量
+        minevindex = np.argmin(s, axis=1)
+        normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
+
+        # 生成平面矩阵
+        planes = np.hstack((normal_all, pointsNP))
+
+        # 调用 normalconsistency_3D_real 方法
+        planes_consist = self.normalconsistency_3D_real(planes)
+
+        return planes_consist
+
     def get_inject_theta(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
         plane_point = plane[:, 3:6]
