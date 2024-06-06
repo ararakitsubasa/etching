@@ -96,8 +96,9 @@ class etching(transport, surface_normal):
     def etching_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes):
 
         try:
-            # indice_inject = np.array(film[i, j, k] > 5)
-            indice_inject = np.array(film[i, j, k] < 0) #etching
+            # indice_inject = np.array(film[i, j, k] > 5)np.logical_and(film < 0, film > -90)
+            indice_inject = np.logical_and(film[i, j, k] < 0, film[i, j, k] > -90)
+            # indice_inject = np.array(film[i, j, k] < 0) #etching
         except IndexError:
             print('get i out:{}'.format(i.max()))
             print(i.max())
@@ -118,7 +119,7 @@ class etching(transport, surface_normal):
         # print(etch_yield)
         # print(etch_yield.shape)
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
-        surface_depo = np.logical_and(film < 0, film > -100) #etching
+        surface_depo = np.logical_and(film < 0, film > -90) #etching
         # surface_depo = np.logical_and(film > 0, film < 2000) #etching
         surface_tree = KDTree(np.argwhere(surface_depo == True)*self.celllength)
 
@@ -146,16 +147,20 @@ class etching(transport, surface_normal):
             k = k[~indice_inject]
             weights_arr = weights_arr[~indice_inject]
 
-        film_indepo_indice = np.logical_or(film == -10, film == -100)
+        film_indepo_indice = np.logical_or(film == -10, film == 100)
         film_indepo_indice |= np.array(film == -50)
         film_indepo = film[~film_indepo_indice]
-        film_min = film_indepo.min()
+        if film_indepo.shape[0] != 0:
+            film_max = film_indepo.min()
+        else:
+            film_max = 0
         # surface_film = np.logical_and(film >= 1, film < 2) #depo
         # film[surface_film] = 20
-        surface_film = np.logical_and(film >= -11, film < -10)
-        film[surface_film] = int(-100*depoStep)
+        surface_film = np.logical_and(film > -12, film < -11)
+        # film[surface_film] = int(100*depoStep)
+        film[surface_film] = 0
 
-        return film, pos, vel, weights_arr, pos_1.shape[0], film_min, cut_theta_high.shape[0], etch_yield
+        return film, pos, vel, weights_arr, pos_1.shape[0], film_max, cut_theta_high.shape[0], etch_yield
 
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes):
         dx = boxsize
