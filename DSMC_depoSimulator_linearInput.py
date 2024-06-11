@@ -169,20 +169,26 @@ class depo(transport):
         tmax = time
         tstep = self.timeStep
         t = 0
-        p1 = p0
-        v1 = v0
-        inputCount = int(p1.shape[0]/(tmax/tstep))
-        
+        # p1 = p0
+        # v1 = v0
+        inputCount = int(p0.shape[0]/(tmax/tstep))
+
 
         film_1 = self.substrate
-        weights_arr_1 = weights_arr
+        # weights_arr_1 = weights_arr
 
         cell = self.celllength
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
+
+        p1 = p0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
+                p1[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+
                 p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep)
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
@@ -203,19 +209,23 @@ class depo(transport):
                 t += tstep
                 p1 = p2
                 v1 = v2
+
+                p1 = np.vstack((p1, p0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
+                v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
+                weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
                 vzMax = np.abs(v1[:,2]).max()
                 # if vMax*tstep < 0.1 and i > 2:
-                if vzMax*tstep < 0.3*self.celllength:                    
-                    tstep *= 2
-                elif vzMax*tstep > 1*self.celllength:
-                    tstep /= 2
+                # if vzMax*tstep < 0.3*self.celllength:                    
+                #     tstep *= 2
+                # elif vzMax*tstep > 1*self.celllength:
+                #     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, input_count:{}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, p1.shape[0]))
         # del self.log, self.fh
 
         return film, collList, elist
