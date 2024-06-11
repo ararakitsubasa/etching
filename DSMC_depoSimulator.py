@@ -213,7 +213,7 @@ class depo(transport):
 
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}'\
                               .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max))
-        del self.log, self.fh
+        # del self.log, self.fh
 
         return film, collList, elist
     
@@ -224,7 +224,7 @@ class depo(transport):
             position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, np.random.rand(self.N)*self.cellSizeY, np.random.uniform(0, 10, self.N)+ self.cellSizeZ - 10]).T
             position_matrix *= self.celllength
             result =  self.runDepo(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
-
+        del self.log, self.fh
         return result
     
     def run_afterCollision(self, step, seed, tmax, velosity_matrix, weight):
