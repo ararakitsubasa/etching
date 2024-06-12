@@ -7,10 +7,10 @@ import logging
 from Collision import transport
 
 class depo(transport):
-    def __init__(self, pressure_pa, temperature, chamberSize, DXsec,
+    def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, thickness, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
-        self.symmetry = False
+        self.symmetry = mirror
         self.depoThick = thickness
         self.param = param # n beta
         self.TS = TS
@@ -27,6 +27,9 @@ class depo(transport):
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
+
+        self.surface_depo_mirror = np.zeros((self.cellSizeX+20, self.cellSizeY+20, self.cellSizeZ))
+
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
         self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
@@ -65,21 +68,24 @@ class depo(transport):
         if self.symmetry == True:
             indiceXMax = i_cp >= cellSize_x_cp
             indiceXMin = i_cp < 0
-            if np.any(indiceXMax):
-                i_cp[indiceXMax] -= cellSize_x_cp 
-                pos_cp[indiceXMax,0] -= self.celllength*self.cellSizeX
-            if np.any(indiceXMin):
-                i_cp[indiceXMin] += cellSize_x_cp
-                pos_cp[indiceXMin,0] += self.celllength*self.cellSizeX
 
+            # 使用布尔索引进行调整
+            i_cp[indiceXMax] -= cellSize_x_cp 
+            pos_cp[indiceXMax, 0] -= self.celllength * self.cellSizeX
+
+            i_cp[indiceXMin] += cellSize_x_cp
+            pos_cp[indiceXMin, 0] += self.celllength * self.cellSizeX
+
+            # 检查并调整 j_cp 和对应的 pos_cp
             indiceYMax = j_cp >= cellSize_y_cp
             indiceYMin = j_cp < 0
-            if np.any(indiceYMax):
-                j_cp[indiceYMax] -= cellSize_y_cp
-                pos_cp[indiceYMax,1] -= self.celllength*self.cellSizeY
-            if np.any(indiceYMin):
-                j_cp[indiceYMin] += cellSize_y_cp
-                pos_cp[indiceYMin,1] += self.celllength*self.cellSizeY
+
+            # 使用布尔索引进行调整
+            j_cp[indiceYMax] -= cellSize_y_cp
+            pos_cp[indiceYMax, 1] -= self.celllength * self.cellSizeY
+
+            j_cp[indiceYMin] += cellSize_y_cp
+            pos_cp[indiceYMin, 1] += self.celllength * self.cellSizeY
         
         indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp < 0)
         indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp < 0)
@@ -111,12 +117,24 @@ class depo(transport):
         # print(pos_1.shape[0])
 
         surface_depo = np.logical_and(film >= 0, film < 1) # depo
-        # surface_depo = np.logical_and(film > 0, film < 2000) #etching
-        surface_tree = KDTree(np.argwhere(surface_depo == True)*self.celllength)
+        self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
+        self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
+        self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
+        self.surface_depo_mirror[10:10+self.cellSizeX, :10, :] = surface_depo[:, -10:, :]
+        self.surface_depo_mirror[10:10+self.cellSizeX:, -10:, :] = surface_depo[:, :10, :]
+        self.surface_depo_mirror[:10, :10, :] = surface_depo[-10:, -10:, :]
+        self.surface_depo_mirror[:10, -10:, :] = surface_depo[-10:, :10, :]
+        self.surface_depo_mirror[-10:, :10, :] = surface_depo[:10, -10:, :]
+        self.surface_depo_mirror[-10:, -10:, :] = surface_depo[:10, :10, :]
 
-        dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=1)
+        surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
 
-        surface_indice = np.argwhere(surface_depo == True)
+        pos_1[:, 0] += 10*self.celllength
+        pos_1[:, 1] += 10*self.celllength
+
+        dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=10)
+
+        surface_indice = np.argwhere(self.surface_depo_mirror == True)
 
         ddsum = np.sum(dd, axis=1)
 
@@ -125,6 +143,17 @@ class depo(transport):
             i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
             j1 = surface_indice[ii][:,kdi,1]
             k1 = surface_indice[ii][:,kdi,2]
+            i1 -= 10
+            j1 -= 10
+            indiceXMax = i1 >= self.cellSizeX
+            indiceXMin = i1 < 0
+            i1[indiceXMax] -= self.cellSizeX
+            i1[indiceXMin] += self.cellSizeX
+
+            indiceYMax = j1 >= self.cellSizeY
+            indiceYMin = j1 < 0
+            j1[indiceYMax] -= self.cellSizeY
+            j1[indiceYMin] += self.cellSizeY
 
             # deposit the particle injected into the film
             film[i1,j1,k1] += weights_arr[indice_inject]*dd[:,kdi]/ddsum
