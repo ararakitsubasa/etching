@@ -8,8 +8,10 @@ from Collision import transport
 
 class depo(transport):
     def __init__(self, pressure_pa, temperature, chamberSize, DXsec,
-                 param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, logname):
+                 param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, thickness, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
+        self.symmetry = False
+        self.depoThick = thickness
         self.param = param # n beta
         self.TS = TS
         self.kdtreeN = kdtreeN
@@ -60,24 +62,25 @@ class depo(transport):
         cellSize_y_cp = np.asarray(self.cellSizeY) 
         cellSize_z_cp = np.asarray(self.cellSizeZ) 
 
-        indiceXMax = i_cp >= cellSize_x_cp
-        indiceXMin = i_cp < 0
-        if np.any(indiceXMax):
-            i_cp[indiceXMax] -= cellSize_x_cp 
-            pos_cp[indiceXMax,0] -= self.celllength*self.cellSizeX
-        if np.any(indiceXMin):
-            i_cp[indiceXMin] += cellSize_x_cp
-            pos_cp[indiceXMin,0] += self.celllength*self.cellSizeX
+        if self.symmetry == True:
+            indiceXMax = i_cp >= cellSize_x_cp
+            indiceXMin = i_cp < 0
+            if np.any(indiceXMax):
+                i_cp[indiceXMax] -= cellSize_x_cp 
+                pos_cp[indiceXMax,0] -= self.celllength*self.cellSizeX
+            if np.any(indiceXMin):
+                i_cp[indiceXMin] += cellSize_x_cp
+                pos_cp[indiceXMin,0] += self.celllength*self.cellSizeX
 
-        indiceYMax = j_cp >= cellSize_y_cp
-        indiceYMin = j_cp < 0
-        if np.any(indiceYMax):
-            j_cp[indiceYMax] -= cellSize_y_cp
-            pos_cp[indiceYMax,1] -= self.celllength*self.cellSizeY
-        if np.any(indiceYMin):
-            j_cp[indiceYMin] += cellSize_y_cp
-            pos_cp[indiceYMin,1] += self.celllength*self.cellSizeY
-
+            indiceYMax = j_cp >= cellSize_y_cp
+            indiceYMin = j_cp < 0
+            if np.any(indiceYMax):
+                j_cp[indiceYMax] -= cellSize_y_cp
+                pos_cp[indiceYMax,1] -= self.celllength*self.cellSizeY
+            if np.any(indiceYMin):
+                j_cp[indiceYMin] += cellSize_y_cp
+                pos_cp[indiceYMin,1] += self.celllength*self.cellSizeY
+        
         indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp < 0)
         indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp < 0)
         indices |= np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
@@ -187,11 +190,15 @@ class depo(transport):
                 p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep)
                 p2 = p2v2[1][0]
                 if p2.shape[0] == 0:
+                    print('p20')
                     break
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
                 film_1 = p2v2[2]
+                if np.any(film_1[:, :, self.depoThick]) != 0:
+                    print('depo finish')
+                    break
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
                 film_max = p2v2[5]
@@ -213,17 +220,22 @@ class depo(transport):
                     pbar.update(1)
                     i += 1
                 vzMax = np.abs(v1[:,2]).max()
+
+                for thick in range(film.shape[2]):
+                    if np.sum(film_1[:, :, thick]) == 0:
+                        filmThickness = thick
+                        break
                 # if vMax*tstep < 0.1 and i > 2:
                 # if vzMax*tstep < 0.3*self.celllength:                    
                 #     tstep *= 2
                 # elif vzMax*tstep > 1*self.celllength:
                 #     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, input_count:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, p1.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0]))
         # del self.log, self.fh
-
-        return film, collList, elist
+        self.substrate = film_1
+        return film_1, collList, elist
     
     def stepRundepo(self, step, randomSeed, tmax, velosityDist, weights):
 
@@ -232,12 +244,23 @@ class depo(transport):
             position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, np.random.rand(self.N)*self.cellSizeY, np.random.uniform(0, 10, self.N)+ self.cellSizeZ - 10]).T
             position_matrix *= self.celllength
             result =  self.runDepo(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
-        del self.log, self.fh
+        # del self.log, self.fh
         return result
     
+    def ThicknessDepo(self, step, seed, tmax, velosity_matrix, weight):
+        weights = np.ones(velosity_matrix.shape[0])*weight
+        for tk in range(50):
+            depoFilm = self.stepRundepo(step, seed+tk, tmax, velosity_matrix, weights)
+            if np.any(depoFilm[0][:, :, self.depoThick]) != 0:
+                break
+        del self.log, self.fh
+        return depoFilm
+    
+
     def run_afterCollision(self, step, seed, tmax, velosity_matrix, weight):
         weights = np.ones(velosity_matrix.shape[0])*weight
         depoFilm = self.stepRundepo(step, seed, tmax, velosity_matrix, weights)
+        del self.log, self.fh
         return depoFilm
     
     def runDepoition(self, step, seed, N, weight):
@@ -247,5 +270,5 @@ class depo(transport):
         Random3 = np.random.rand(N)
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
         depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
-
+        del self.log, self.fh
         return depoFilm
