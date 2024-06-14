@@ -292,12 +292,16 @@ class depo(transport):
         del self.log, self.fh
         return depoFilm
     
-    def runDepoition(self, step, seed, N, weight):
+    def runDepoition(self, step, seed, tmax, N, weight):
         weights = np.ones(N)*weight
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
         velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
-        depoFilm = self.stepRundepo(step, seed, velosity_matrix, weights)
+        weights = np.ones(velosity_matrix.shape[0])*weight
+        for tk in range(50):
+            depoFilm = self.stepRundepo(step, seed+tk, tmax, velosity_matrix, weights)
+            if np.any(depoFilm[0][:, :, self.depoThick]) != 0:
+                break
         del self.log, self.fh
         return depoFilm
