@@ -8,7 +8,8 @@ from Collision import transport
 
 class depo(transport):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec,
-                 param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, tstep, thickness, logname):
+                 param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
+                 tstep, thickness,substrateTop, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
         self.depoThick = thickness
@@ -28,6 +29,8 @@ class depo(transport):
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
 
+        self.substrateTop = substrateTop
+        self.indepoThick = substrateTop
         self.surface_depo_mirror = np.zeros((self.cellSizeX+20, self.cellSizeY+20, self.cellSizeZ))
 
         self.log = logging.getLogger()
@@ -196,7 +199,7 @@ class depo(transport):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
-    def runDepo(self, p0, v0, time, film, weights_arr, depoStep):
+    def runDepo(self, p0, v0, time, film, weights_arr, depoStep, stepSize):
 
         tmax = time
         tstep = self.timeStep
@@ -227,6 +230,10 @@ class depo(transport):
                 film_1 = p2v2[2]
                 if np.any(film_1[:, :, self.depoThick]) != 0:
                     print('depo finish')
+                    break
+                if np.any(film_1[:, :, self.indepoThick + stepSize]) != 0:
+                    self.indepoThick = filmThickness
+                    print('depo finish at: {}'.format(self.indepoThick))
                     break
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
@@ -264,7 +271,7 @@ class depo(transport):
                               .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0]))
         # del self.log, self.fh
         self.substrate = film_1
-        return film_1, collList, elist
+        return film_1, collList, elist, filmThickness
     
     def stepRundepo(self, step, randomSeed, tmax, velosityDist, weights):
 
@@ -307,3 +314,24 @@ class depo(transport):
                 break
         del self.log, self.fh
         return depoFilm
+
+    def depo_position_increase(self, stepSize, randomSeed, tmax, N, weight):
+        np.random.seed(randomSeed)
+        for i in range(9):
+            weights = np.ones(N)*weight
+            Random1 = np.random.rand(N)
+            Random2 = np.random.rand(N)
+            Random3 = np.random.rand(N)
+            velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), \
+                                        self.max_velocity_w(Random1, Random2), \
+                                            self.max_velocity_v(Random3)]).T
+            weights = np.ones(velosity_matrix.shape[0])*weight
+            position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, \
+                                        np.random.rand(self.N)*self.cellSizeY, \
+                                        np.random.uniform(0, self.cellSizeZ-self.indepoThick - stepSize*(i+1), self.N)+ self.indepoThick + stepSize]).T
+            position_matrix *= self.celllength
+            result =  self.runDepo(position_matrix, velosity_matrix, tmax, self.substrate, weights, depoStep=i+1, stepSize=stepSize)
+                
+        del self.log, self.fh
+        return result
+    
