@@ -278,7 +278,7 @@ class etching(transport, surface_normal):
         return depoFilm
     
 
-    def runEtching(self, step, seed, tmax, N, weight):
+    def runEtching(self, step, seed, tmax, N, weight, xyP):
         # filmMac = self.target_substrate(Ero_dist_x, Ero_dist_y, self.sub_x, self.sub_y)
         # velosity_matrix = self.velocity_dist(Ero_dist_x, filmMac)
         # N = int(631394)
@@ -286,7 +286,9 @@ class etching(transport, surface_normal):
         Random1 = np.random.rand(N)
         Random2 = np.random.rand(N)
         Random3 = np.random.rand(N)
-        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), self.max_velocity_w(Random1, Random2), self.max_velocity_v(Random3)]).T
+        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2)*xyP, \
+                                    self.max_velocity_w(Random1, Random2)*xyP, \
+                                        self.max_velocity_v(Random3)]).T
         depoFilm = self.stepRunEtch(step, seed, tmax, velosity_matrix, weights)
 
         return depoFilm
