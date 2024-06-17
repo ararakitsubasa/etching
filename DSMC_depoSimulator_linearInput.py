@@ -335,3 +335,15 @@ class depo(transport):
         del self.log, self.fh
         return result
     
+    def depo_position_increase_DSMC(self, stepSize, randomSeed,velosity_matrix, tmax, weight):
+        np.random.seed(randomSeed)
+        for i in range(9):
+            weights = np.ones(velosity_matrix.shape[0])*weight
+            position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, \
+                                        np.random.rand(self.N)*self.cellSizeY, \
+                                        np.random.uniform(0, self.cellSizeZ-self.indepoThick - stepSize*(i+1), self.N)+ self.indepoThick + stepSize]).T
+            position_matrix *= self.celllength
+            result =  self.runDepo(position_matrix, velosity_matrix, tmax, self.substrate, weights, depoStep=i+1, stepSize=stepSize)
+                
+        del self.log, self.fh
+        return result

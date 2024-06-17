@@ -199,7 +199,7 @@ class depo(transport):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
-    def runDepo(self, p0, v0, time, film, weights_arr, depoStep, stepSize):
+    def runDepo(self, p0, v0, time, film, weights_arr, depoStep, emptyZ):
 
         tmax = time
         tstep = self.timeStep
@@ -212,8 +212,8 @@ class depo(transport):
         cell = self.celllength
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
-
-        p1 = p0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        filmThickness = self.substrateTop
+        p1 = self.posGenerator(inputCount, filmThickness, emptyZ)
         v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
@@ -231,10 +231,10 @@ class depo(transport):
                 if np.any(film_1[:, :, self.depoThick]) != 0:
                     print('depo finish')
                     break
-                if np.any(film_1[:, :, self.indepoThick + stepSize]) != 0:
-                    self.indepoThick = filmThickness
-                    print('depo finish at: {}'.format(self.indepoThick))
-                    break
+                # if np.any(film_1[:, :, self.indepoThick + stepSize]) != 0:
+                #     self.indepoThick = filmThickness
+                #     print('depo finish at: {}'.format(self.indepoThick))
+                #     break
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
                 film_max = p2v2[5]
@@ -248,7 +248,13 @@ class depo(transport):
                 p1 = p2
                 v1 = v2
 
-                p1 = np.vstack((p1, p0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
+                for thick in range(film.shape[2]):
+                    if np.sum(film_1[:, :, thick]) == 0:
+                        filmThickness = thick
+                        break
+
+                pGenerate = self.posGenerator(inputCount, filmThickness, emptyZ)
+                p1 = np.vstack((p1, pGenerate))
                 v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
                 weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
                 if int(t/tmax*100) > i:
@@ -257,10 +263,6 @@ class depo(transport):
                     i += 1
                 vzMax = np.abs(v1[:,2]).max()
 
-                for thick in range(film.shape[2]):
-                    if np.sum(film_1[:, :, thick]) == 0:
-                        filmThickness = thick
-                        break
                 # if vMax*tstep < 0.1 and i > 2:
                 # if vzMax*tstep < 0.3*self.celllength:                    
                 #     tstep *= 2
@@ -335,4 +337,8 @@ class depo(transport):
         del self.log, self.fh
         return result
     
-    
+    def posGenerator(self, IN, thickness, emptyZ):
+        position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
+                                    np.random.rand(IN)*self.cellSizeY, \
+                                    np.random.uniform(0, self.cellSizeZ-thickness-emptyZ, IN)+ thickness + emptyZ]).T
+        return position_matrix
