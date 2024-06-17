@@ -199,14 +199,16 @@ class depo(transport):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
-    def runDepo(self, p0, v0, time, film, weights_arr, depoStep, emptyZ):
+    def runDepo(self, v0, time, film, weights_arr, depoStep, emptyZ):
 
         tmax = time
         tstep = self.timeStep
         t = 0
         # p1 = p0
         # v1 = v0
-        inputCount = int(p0.shape[0]/(tmax/tstep))
+        vAllparticle = v0.shape[0]
+        depoTot = 0
+        inputCount = int(v0.shape[0]/(tmax/tstep))
         film_1 = self.substrate
         # weights_arr_1 = weights_arr
         cell = self.celllength
@@ -237,6 +239,7 @@ class depo(transport):
                 #     break
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
+                depoTot += depo_count
                 film_max = p2v2[5]
                 delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
@@ -269,58 +272,32 @@ class depo(transport):
                 # elif vzMax*tstep > 1*self.celllength:
                 #     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  input_count:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, inDepo:{}, DepoTot:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  ParticleIn:{}, ParticleAll:{:2.2%}'\
+                        .format(i, tstep, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle))
         # del self.log, self.fh
         self.substrate = film_1
         return film_1, collList, elist, filmThickness
     
-    def stepRundepo(self, step, randomSeed, tmax, velosityDist, weights):
-
-        for i in range(step):
-            np.random.seed(randomSeed+i)
-            position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, np.random.rand(self.N)*self.cellSizeY, np.random.uniform(0, 10, self.N)+ self.cellSizeZ - 10]).T
-            position_matrix *= self.celllength
-            result =  self.runDepo(position_matrix, velosityDist, tmax, self.substrate, weights, depoStep=i+1)
-        # del self.log, self.fh
+    
+    def posGenerator(self, IN, thickness, emptyZ):
+        position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
+                                    np.random.rand(IN)*self.cellSizeY, \
+                                    np.random.uniform(0, self.cellSizeZ-thickness-emptyZ, IN)+ thickness + emptyZ]).T
+        position_matrix *= self.celllength
+        return position_matrix
+    
+    def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
+        np.random.seed(randomSeed)
+        for i in range(10):
+            weights = np.ones(velosity_matrix.shape[0])*weight
+            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
+        del self.log, self.fh
         return result
     
-    def ThicknessDepo(self, step, seed, tmax, velosity_matrix, weight):
-        weights = np.ones(velosity_matrix.shape[0])*weight
-        for tk in range(50):
-            depoFilm = self.stepRundepo(step, seed+tk, tmax, velosity_matrix, weights)
-            if np.any(depoFilm[0][:, :, self.depoThick]) != 0:
-                break
-        del self.log, self.fh
-        return depoFilm
-    
 
-    def run_afterCollision(self, step, seed, tmax, velosity_matrix, weight):
-        weights = np.ones(velosity_matrix.shape[0])*weight
-        depoFilm = self.stepRundepo(step, seed, tmax, velosity_matrix, weights)
-        del self.log, self.fh
-        return depoFilm
-    
-    def runDepoition(self, step, seed, tmax, N, weight, xyP):
-        weights = np.ones(N)*weight
-        Random1 = np.random.rand(N)
-        Random2 = np.random.rand(N)
-        Random3 = np.random.rand(N)
-        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2)*xyP, \
-                                    self.max_velocity_w(Random1, Random2)*xyP, \
-                                        self.max_velocity_v(Random3)]).T
-        weights = np.ones(velosity_matrix.shape[0])*weight
-        for tk in range(50):
-            depoFilm = self.stepRundepo(step, seed+tk, tmax, velosity_matrix, weights)
-            if np.any(depoFilm[0][:, :, self.depoThick]) != 0:
-                break
-        del self.log, self.fh
-        return depoFilm
-
-    def depo_position_increase(self, stepSize, randomSeed, tmax, N, weight):
+    def depo_position_increase_cosVel(self, randomSeed, N, tmax, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(9):
-            weights = np.ones(N)*weight
             Random1 = np.random.rand(N)
             Random2 = np.random.rand(N)
             Random3 = np.random.rand(N)
@@ -328,17 +305,7 @@ class depo(transport):
                                         self.max_velocity_w(Random1, Random2), \
                                             self.max_velocity_v(Random3)]).T
             weights = np.ones(velosity_matrix.shape[0])*weight
-            position_matrix = np.array([np.random.rand(self.N)*self.cellSizeX, \
-                                        np.random.rand(self.N)*self.cellSizeY, \
-                                        np.random.uniform(0, self.cellSizeZ-self.indepoThick - stepSize*(i+1), self.N)+ self.indepoThick + stepSize]).T
-            position_matrix *= self.celllength
-            result =  self.runDepo(position_matrix, velosity_matrix, tmax, self.substrate, weights, depoStep=i+1, stepSize=stepSize)
+            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
                 
         del self.log, self.fh
         return result
-    
-    def posGenerator(self, IN, thickness, emptyZ):
-        position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
-                                    np.random.rand(IN)*self.cellSizeY, \
-                                    np.random.uniform(0, self.cellSizeZ-thickness-emptyZ, IN)+ thickness + emptyZ]).T
-        return position_matrix
