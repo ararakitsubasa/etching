@@ -3,9 +3,10 @@ import time as Time
 from tqdm import tqdm, trange
 from scipy.special import gamma, factorial
 from scipy.spatial.transform import Rotation as R
+import logging
 
 class transport:
-    def __init__(self, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec):
+    def __init__(self, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec, logname):
         self.pressure = pressure_pa
         self.T = temperature
         self.N_A = 6.02214076*10**23
@@ -24,7 +25,17 @@ class transport:
         self.chamberY = chamberSize[1]
         self.DXsec = DXsec
         self.depo_pos = np.zeros((1,6))
-
+        self.log = logging.getLogger()
+        self.log.setLevel(logging.INFO)
+        self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
+        self.fh.setLevel(logging.INFO)
+        self.formatter = logging.Formatter(
+                    fmt='%(asctime)s %(levelname)s: %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                    )
+        self.fh.setFormatter(self.formatter)
+        self.log.addHandler(self.fh)
+        self.log.info('-------Start--------')
     
     def boundary(self, pos, vel):
         pos_cp = np.asarray(pos)
@@ -66,7 +77,7 @@ class transport:
     
     def diVr_func(self, d_refi, eVr, wi):
         kb = 1.380649e-23
-        Tref = 300
+        Tref = 650
         diVr = d_refi * np.sqrt(((kb*Tref)/(eVr*self.q))**(wi-1/2)*gamma(5/2 - wi))
         return diVr
 
@@ -168,10 +179,11 @@ class transport:
                 t += self.tstep
                 p1 = p2
                 v1 = v2
-                i += 1
-                if i % (int((tmax/self.tstep)/100)) == 0:
+                if int(t/tmax*100) > i:
                     Time.sleep(0.01)
-                    # 更新发呆进度
                     pbar.update(1)
+                    i += 1
+                self.log.info('runStep:{}, timeStep:{}, collsion:{}, particleIn:{}'\
+                        .format(i, self.tstep, collList.shape[0], p1.shape[0]))
         return collList, elist, self.depo_pos[1:]
     
