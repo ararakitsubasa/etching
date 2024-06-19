@@ -9,7 +9,7 @@ from Collision import transport
 class depo(transport):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
-                 tstep, thickness,substrateTop, logname):
+                 tstep, thickness,substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
         self.depoThick = thickness
@@ -29,6 +29,7 @@ class depo(transport):
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
 
+        self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
         self.surface_depo_mirror = np.zeros((self.cellSizeX+20, self.cellSizeY+20, self.cellSizeZ))
@@ -215,7 +216,18 @@ class depo(transport):
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
         filmThickness = self.substrateTop
-        p1 = self.posGenerator(inputCount, filmThickness, emptyZ)
+
+        if self.posGeneratorType == 'full':
+            self.log.info('using posGenerator_full')
+            posGenerator = self.posGenerator_full
+        elif self.posGeneratorType == 'top':
+            self.log.info('using posGenerator_top')
+            posGenerator = self.posGenerator_top
+        else:
+            self.log.info('using posGenerator')
+            posGenerator = self.posGenerator 
+                     
+        p1 = posGenerator(inputCount, filmThickness, emptyZ)
         v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
@@ -256,7 +268,7 @@ class depo(transport):
                         filmThickness = thick
                         break
 
-                pGenerate = self.posGenerator(inputCount, filmThickness, emptyZ)
+                pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
                 p1 = np.vstack((p1, pGenerate))
                 v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
                 weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
@@ -293,6 +305,20 @@ class depo(transport):
         position_matrix *= self.celllength
         return position_matrix
     
+    def posGenerator_full(self, IN, thickness, emptyZ):
+        position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
+                                    np.random.rand(IN)*self.cellSizeY, \
+                                    np.random.uniform(0, self.cellSizeZ-thickness-emptyZ, IN)+ thickness + emptyZ]).T
+        position_matrix *= self.celllength
+        return position_matrix
+
+    def posGenerator_top(self, IN, thickness, emptyZ):
+        position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
+                                    np.random.rand(IN)*self.cellSizeY, \
+                                    np.random.uniform(0, emptyZ, IN) + self.cellSizeZ - emptyZ]).T
+        position_matrix *= self.celllength
+        return position_matrix
+      
     def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(10):
