@@ -33,7 +33,7 @@ class depo(transport):
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
         self.surface_depo_mirror = np.zeros((self.cellSizeX+20, self.cellSizeY+20, self.cellSizeZ))
-
+        self.filmDensity = np.copy(film)
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
         self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
@@ -175,6 +175,7 @@ class depo(transport):
         film_indepo = film[~film_indepo_indice]
         film_max = film_indepo.max()
         surface_film = np.logical_and(film >= 1, film < 2)
+        self.filmDensity[surface_film] = film[surface_film]
         film[surface_film] = 20
 
         return film, pos, vel, weights_arr, pos_1.shape[0], film_max
@@ -226,7 +227,7 @@ class depo(transport):
         else:
             self.log.info('using posGenerator')
             posGenerator = self.posGenerator 
-                     
+
         p1 = posGenerator(inputCount, filmThickness, emptyZ)
         v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
@@ -288,7 +289,7 @@ class depo(transport):
                         .format(i, tstep, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle))
         # del self.log, self.fh
         self.substrate = film_1
-        return film_1, collList, elist, filmThickness
+        return film_1, collList, elist, filmThickness, self.filmDensity
     
     
     # def posGenerator(self, IN, thickness, emptyZ):
