@@ -325,6 +325,8 @@ class depo(transport):
         for i in range(10):
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
+            if np.any(result[0][:, :, self.depoThick]) != 0:
+                break  
         del self.log, self.fh
         return result
     
@@ -340,7 +342,8 @@ class depo(transport):
                                             self.max_velocity_v(Random3)]).T
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
-                
+            if np.any(result[0][:, :, self.depoThick]) != 0:
+                break             
         del self.log, self.fh
         return result
     
@@ -360,12 +363,12 @@ class depo(transport):
             theta_hist_x = theta_hist_x[:-1]
 
             theta_hist_y = self.rfunc_2(theta_hist_x)
-            theta_hist_y *= 1e6
+            theta_hist_y *= N
             theta_sample = np.array([])
 
             for i in range(theta_bins.shape[0] - 1):
                 theta_sample = np.concatenate(( theta_sample, np.random.uniform(theta_bins[i], theta_bins[i+1], int(theta_hist_y[i]))))
-
+            self.log.info('theta_sample.shape:{}'.format(theta_sample.shape[0]))
             phi = np.random.rand(theta_sample.shape[0])*2*np.pi
             vel_x = np.cos(phi)*np.sin(theta_sample)*1e3
             vel_y = np.sin(phi)*np.sin(theta_sample)*1e3
@@ -373,6 +376,7 @@ class depo(transport):
             velosity_matrix = np.array([vel_x, vel_y, -vel_z]).T
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
-                
+            if np.any(result[0][:, :, self.depoThick]) != 0:
+                break  
         del self.log, self.fh
         return result
