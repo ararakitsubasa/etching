@@ -166,7 +166,7 @@ class transport:
             while t < tmax:
                 p2v2 = self.getAcc_sparse(p1, v1)
                 p2 = p2v2[1][0]
-                if p2.shape[0] == 0:
+                if p2.shape[0] < int(1e5):
                     break
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
