@@ -224,6 +224,9 @@ class depo(transport):
         elif self.posGeneratorType == 'top':
             self.log.info('using posGenerator_top')
             posGenerator = self.posGenerator_top
+        elif self.posGeneratorType == 'vacuum':
+            self.log.info('using posGenerator_vaccum')
+            posGenerator = self.posGenerator_vacuum
         else:
             self.log.info('using posGenerator')
             posGenerator = self.posGenerator 
@@ -319,7 +322,34 @@ class depo(transport):
                                     np.random.uniform(0, emptyZ, IN) + self.cellSizeZ - emptyZ]).T
         position_matrix *= self.celllength
         return position_matrix
-      
+
+    def posGenerator_vacuum(self, IN, thickness, emptyZ): # never use
+
+        thick = 4
+        # 计算每个位置从顶部开始第一次出现非零的索引
+        # 因为我们从底部向上扫描，所以我们使用[::-1]反转
+        film_reversed = self.substrate[:, :, ::-1]
+        non_vacuum_top = np.argmax(film_reversed != 0, axis=2)
+
+        # 计算在原始 film 中的实际索引
+        non_vacuum_top = self.substrate.shape[2] - 1 - non_vacuum_top
+
+        # 广播 non_vacuum_top 以匹配 film 的形状
+        non_vacuum_top_broadcast = non_vacuum_top
+        non_vacuum_top_broadcast += emptyZ
+
+        position_matrix = np.array([np.random.rand(IN)*self.substrate.shape[0], \
+                                    np.random.rand(IN)*self.substrate.shape[1], \
+                                    np.random.uniform(0, thick, IN)]).T
+
+        i = np.floor((position_matrix[:, 0])).astype(int)
+        j = np.floor((position_matrix[:, 1])).astype(int)
+
+        position_matrix[:,2] += non_vacuum_top_broadcast[i, j]
+
+        position_matrix *= self.celllength
+        return position_matrix
+
     def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(10):
