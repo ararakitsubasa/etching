@@ -7,11 +7,12 @@ import logging
 from Collision import transport
 
 class depo(transport):
-    def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec,
+    def __init__(self, mirror, collision, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
                  tstep, thickness,substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
+        self.collider = collision
         self.depoThick = thickness
         self.param = param # n beta
         self.TS = TS
@@ -34,6 +35,9 @@ class depo(transport):
         self.indepoThick = substrateTop
         self.surface_depo_mirror = np.zeros((self.cellSizeX+20, self.cellSizeY+20, self.cellSizeZ))
         self.filmDensity = np.copy(film)
+        self.collList = np.array([])
+        self.elist = np.array([[0, 0, 0]])
+
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
         self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
@@ -201,21 +205,16 @@ class depo(transport):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
-    def runDepo(self, v0, time, film, weights_arr, depoStep, emptyZ):
+    def runDepo(self, v0, bunches, film, weights_arr, depoStep, emptyZ):
 
-        tmax = time
         tstep = self.timeStep
-        t = 0
-        # p1 = p0
-        # v1 = v0
         vAllparticle = v0.shape[0]
         depoTot = 0
-        inputCount = int(v0.shape[0]/(tmax/tstep))
+        bunch = 0
+        inputCount = int(v0.shape[0]/bunches)
         film_1 = self.substrate
         # weights_arr_1 = weights_arr
         cell = self.celllength
-        collList = np.array([])
-        elist = np.array([[0, 0, 0]])
         filmThickness = self.substrateTop
 
         if self.posGeneratorType == 'full':
@@ -229,16 +228,19 @@ class depo(transport):
             posGenerator = self.posGenerator 
 
         p1 = posGenerator(inputCount, filmThickness, emptyZ)
-        v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-        weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        v1 = v0[:inputCount]
+        weights_arr_1 = weights_arr[:inputCount]
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
-            while t < tmax:
+            while bunch < bunches:
                 p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep)
                 p2 = p2v2[1][0]
-                if p2.shape[0] == 0:
-                    print('p20')
-                    break
+                # if p2.shape[0] == 0:
+                #     bunch += 1
+                #     pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
+                #     p1 = np.vstack((p1, pGenerate))
+                #     v1 = np.vstack((v1, v0[inputCount*bunch:inputCount*(bunch+1)]))
+                #     weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*bunch:inputCount*(bunch+1)]), axis=0)
                 v2 = p2v2[1][1]
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
@@ -246,50 +248,51 @@ class depo(transport):
                 if np.any(film_1[:, :, self.depoThick]) != 0:
                     print('depo finish')
                     break
-                # if np.any(film_1[:, :, self.indepoThick + stepSize]) != 0:
-                #     self.indepoThick = filmThickness
-                #     print('depo finish at: {}'.format(self.indepoThick))
-                #     break
+
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
                 depoTot += depo_count
                 film_max = p2v2[5]
-                delx = np.linalg.norm(p1 - p2, axis=1)
+                # delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
                 vMax = vMag.max()
-                KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
-                collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
-                t += tstep
+                if self.collider == True:
+                    delx = np.linalg.norm(p1 - p2, axis=1)
+                    KE = 0.5*self.Al_m*vMag**2/self.q
+                    prob = self.collProb(self.ng_pa, KE, delx)
+                    self.collList, self.elist, v2 = self.collision(prob, self.collList, self.elist, KE, vMag, p2, v2)
+
                 p1 = p2
                 v1 = v2
+                vzMax = np.abs(v1[:,2]).max()
+                if vzMax*tstep < 0.5*self.celllength:                    
+                    tstep *= 2
+                elif vzMax*tstep > 1*self.celllength:
+                    tstep /= 2
+
+                if p1.shape[0] <= 50:
+                    bunch += 1
+                    tstep = self.timeStep
+                    pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
+                    p1 = np.vstack((p1, pGenerate))
+                    v1 = np.vstack((v1, v0[inputCount*bunch:inputCount*(bunch+1)]))
+                    weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*bunch:inputCount*(bunch+1)]), axis=0)
 
                 for thick in range(film.shape[2]):
                     if np.sum(film_1[:, :, thick]) == 0:
                         filmThickness = thick
                         break
 
-                pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
-                p1 = np.vstack((p1, pGenerate))
-                v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
-                weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
-                if int(t/tmax*100) > i:
+                if int(bunch/bunches*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-                vzMax = np.abs(v1[:,2]).max()
 
-                # if vMax*tstep < 0.1 and i > 2:
-                # if vzMax*tstep < 0.3*self.celllength:                    
-                #     tstep *= 2
-                # elif vzMax*tstep > 1*self.celllength:
-                #     tstep /= 2
-
-                self.log.info('runStep:{}, timeStep:{}, inDepo:{}, DepoTot:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  ParticleIn:{}, ParticleAll:{:2.2%}'\
-                        .format(i, tstep, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle))
+                self.log.info('runStep:{}, timeStep:{}, bunch:{}, inDepo:{}, DepoTot:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  ParticleIn:{}, ParticleAll:{:2.2%}'\
+                        .format(i, tstep, bunch, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle))
         # del self.log, self.fh
         self.substrate = film_1
-        return film_1, collList, elist, filmThickness, self.filmDensity
+        return film_1, self.collList, self.elist, filmThickness, self.filmDensity
     
     
     # def posGenerator(self, IN, thickness, emptyZ):
@@ -320,18 +323,17 @@ class depo(transport):
         position_matrix *= self.celllength
         return position_matrix
 
-    def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
+    def depo_position_increase(self, randomSeed, velosity_matrix, bunches, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(10):
             weights = np.ones(velosity_matrix.shape[0])*weight
-            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
+            result =  self.runDepo(velosity_matrix, bunches, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
                 break  
         del self.log, self.fh
-        return result
-    
+        return result  
 
-    def depo_position_increase_cosVel(self, randomSeed, N, tmax, weight, Zgap):
+    def depo_position_increase_cosVel(self, randomSeed, N, bunches, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(9):
             Random1 = np.random.rand(N)
@@ -341,7 +343,7 @@ class depo(transport):
                                         self.max_velocity_w(Random1, Random2), \
                                             self.max_velocity_v(Random3)]).T
             weights = np.ones(velosity_matrix.shape[0])*weight
-            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
+            result =  self.runDepo(velosity_matrix, bunches, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
                 break             
         del self.log, self.fh
@@ -353,7 +355,7 @@ class depo(transport):
         y = np.cos(x) ** self.n 
         return y
 
-    def depo_position_increase_cosVel_NoMaxwell(self, randomSeed, N, tmax, weight, Zgap):
+    def depo_position_increase_cosVel_NoMaxwell(self, randomSeed, N, bunches, weight, Zgap):
         np.random.seed(randomSeed)
         for i in range(9):
 
@@ -378,7 +380,7 @@ class depo(transport):
             vel_z = np.cos(theta_sample)*1e3
             velosity_matrix = np.array([vel_x, vel_y, -vel_z]).T
             weights = np.ones(velosity_matrix.shape[0])*weight
-            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
+            result =  self.runDepo(velosity_matrix, bunches, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
                 break  
         del self.log, self.fh
