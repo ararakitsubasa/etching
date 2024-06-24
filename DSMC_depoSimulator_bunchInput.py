@@ -324,6 +324,10 @@ class depo(transport):
         return position_matrix
 
     def depo_position_increase(self, randomSeed, velosity_matrix, bunches, weight, Zgap):
+        energy = np.linalg.norm(velosity_matrix, axis=1)
+        velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+        velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+        velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
         np.random.seed(randomSeed)
         for i in range(10):
             weights = np.ones(velosity_matrix.shape[0])*weight
@@ -342,6 +346,10 @@ class depo(transport):
             velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), \
                                         self.max_velocity_w(Random1, Random2), \
                                             self.max_velocity_v(Random3)]).T
+            energy = np.linalg.norm(velosity_matrix, axis=1)
+            velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+            velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+            velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, bunches, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
@@ -349,39 +357,3 @@ class depo(transport):
         del self.log, self.fh
         return result
     
-    def rfunc_2(self, x): #Release factor function
-        # print("-------rfunc------")
-        # print(x)
-        y = np.cos(x) ** self.n 
-        return y
-
-    def depo_position_increase_cosVel_NoMaxwell(self, randomSeed, N, bunches, weight, Zgap):
-        np.random.seed(randomSeed)
-        for i in range(9):
-
-            theta_bins_size = 100
-            theta_bins = np.linspace(-np.pi/2, np.pi/2, theta_bins_size)
-            theta_hist_x = theta_bins + np.pi/((theta_bins_size-1)*2)
-            theta_hist_x = theta_hist_x[:-1]
-
-            theta_hist_y = self.rfunc_2(theta_hist_x)
-            theta_hist_y *= 1e5
-            theta_sample = np.array([])
-
-            for i in range(theta_bins.shape[0] - 1):
-                theta_sample = np.concatenate(( theta_sample, np.random.uniform(theta_bins[i], theta_bins[i+1], int(theta_hist_y[i]))))
-            
-            np.random.shuffle(theta_sample)
-            theta_sample = theta_sample[:N]
-            self.log.info('theta_sample.shape:{}'.format(theta_sample.shape[0]))
-            phi = np.random.rand(theta_sample.shape[0])*2*np.pi
-            vel_x = np.cos(phi)*np.sin(theta_sample)*1e3
-            vel_y = np.sin(phi)*np.sin(theta_sample)*1e3
-            vel_z = np.cos(theta_sample)*1e3
-            velosity_matrix = np.array([vel_x, vel_y, -vel_z]).T
-            weights = np.ones(velosity_matrix.shape[0])*weight
-            result =  self.runDepo(velosity_matrix, bunches, self.substrate, weights, depoStep=1, emptyZ=Zgap)
-            if np.any(result[0][:, :, self.depoThick]) != 0:
-                break  
-        del self.log, self.fh
-        return result

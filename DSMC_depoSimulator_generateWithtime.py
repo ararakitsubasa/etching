@@ -7,11 +7,12 @@ import logging
 from Collision import transport
 
 class depo(transport):
-    def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec,
+    def __init__(self, mirror, collision, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
                  tstep, thickness,substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
+        self.collider = collision
         self.depoThick = thickness
         self.param = param # n beta
         self.TS = TS
@@ -250,20 +251,18 @@ class depo(transport):
                 if np.any(film_1[:, :, self.depoThick]) != 0:
                     print('depo finish')
                     break
-                # if np.any(film_1[:, :, self.indepoThick + stepSize]) != 0:
-                #     self.indepoThick = filmThickness
-                #     print('depo finish at: {}'.format(self.indepoThick))
-                #     break
+
                 weights_arr_1 = p2v2[3]
                 depo_count = p2v2[4]
                 depoTot += depo_count
                 film_max = p2v2[5]
-                delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
                 vMax = vMag.max()
-                KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
-                collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
+                if self.collider == True:
+                    delx = np.linalg.norm(p1 - p2, axis=1)
+                    KE = 0.5*self.Al_m*vMag**2/self.q
+                    prob = self.collProb(self.ng_pa, KE, delx)
+                    self.collList, self.elist, v2 = self.collision(prob, self.collList, self.elist, KE, vMag, p2, v2)
                 t += tstep
                 p1 = p2
                 v1 = v2
@@ -283,11 +282,6 @@ class depo(transport):
                     i += 1
                 vzMax = np.abs(v1[:,2]).max()
 
-                # if vMax*tstep < 0.1 and i > 2:
-                # if vzMax*tstep < 0.3*self.celllength:                    
-                #     tstep *= 2
-                # elif vzMax*tstep > 1*self.celllength:
-                #     tstep /= 2
                 vInhigh = np.sum(np.array(v2[:,2] > v0Max ))/v2.shape[0]
                 vInlow = np.sum(np.array(v2[:,2] < v0Max ))/v2.shape[0]
 
@@ -355,6 +349,10 @@ class depo(transport):
 
     def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
         np.random.seed(randomSeed)
+        energy = np.linalg.norm(velosity_matrix, axis=1)
+        velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+        velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+        velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
         for i in range(10):
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
@@ -373,6 +371,10 @@ class depo(transport):
             velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), \
                                         self.max_velocity_w(Random1, Random2), \
                                             self.max_velocity_v(Random3)]).T
+            energy = np.linalg.norm(velosity_matrix, axis=1)
+            velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+            velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+            velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
@@ -380,39 +382,3 @@ class depo(transport):
         del self.log, self.fh
         return result
     
-    def rfunc_2(self, x): #Release factor function
-        # print("-------rfunc------")
-        # print(x)
-        y = np.cos(x) ** self.n 
-        return y
-
-    def depo_position_increase_cosVel_NoMaxwell(self, randomSeed, N, tmax, weight, Zgap):
-        np.random.seed(randomSeed)
-        for i in range(9):
-
-            theta_bins_size = 100
-            theta_bins = np.linspace(-np.pi/2, np.pi/2, theta_bins_size)
-            theta_hist_x = theta_bins + np.pi/((theta_bins_size-1)*2)
-            theta_hist_x = theta_hist_x[:-1]
-
-            theta_hist_y = self.rfunc_2(theta_hist_x)
-            theta_hist_y *= 1e5
-            theta_sample = np.array([])
-
-            for i in range(theta_bins.shape[0] - 1):
-                theta_sample = np.concatenate(( theta_sample, np.random.uniform(theta_bins[i], theta_bins[i+1], int(theta_hist_y[i]))))
-            
-            np.random.shuffle(theta_sample)
-            theta_sample = theta_sample[:N]
-            self.log.info('theta_sample.shape:{}'.format(theta_sample.shape[0]))
-            phi = np.random.rand(theta_sample.shape[0])*2*np.pi
-            vel_x = np.cos(phi)*np.sin(theta_sample)*1e3
-            vel_y = np.sin(phi)*np.sin(theta_sample)*1e3
-            vel_z = np.cos(theta_sample)*1e3
-            velosity_matrix = np.array([vel_x, vel_y, -vel_z]).T
-            weights = np.ones(velosity_matrix.shape[0])*weight
-            result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
-            if np.any(result[0][:, :, self.depoThick]) != 0:
-                break  
-        del self.log, self.fh
-        return result
