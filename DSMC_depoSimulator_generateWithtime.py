@@ -209,6 +209,7 @@ class depo(transport):
         # p1 = p0
         # v1 = v0
         vAllparticle = v0.shape[0]
+        v0Max = np.average(v0[:,2])
         depoTot = 0
         inputCount = int(v0.shape[0]/(tmax/tstep))
         film_1 = self.substrate
@@ -287,9 +288,11 @@ class depo(transport):
                 #     tstep *= 2
                 # elif vzMax*tstep > 1*self.celllength:
                 #     tstep /= 2
+                vInhigh = np.sum(np.array(v2[:,2] > v0Max ))/v2.shape[0]
+                vInlow = np.sum(np.array(v2[:,2] < v0Max ))/v2.shape[0]
 
-                self.log.info('runStep:{}, timeStep:{}, inDepo:{}, DepoTot:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  ParticleIn:{}, ParticleAll:{:2.2%}'\
-                        .format(i, tstep, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle))
+                self.log.info('runStep:{}, timeStep:{}, inDepo:{}, DepoTot:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, thickness:{},  ParticleIn:{}, ParticleAll:{:2.2%}, inhigh:{:2.2%}, inlow:{:2.2%}'\
+                        .format(i, tstep, depo_count, depoTot, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_max, filmThickness, p1.shape[0], (p1.shape[0] + depoTot)/vAllparticle, vInhigh, vInlow))
         # del self.log, self.fh
         self.substrate = film_1
         return film_1, collList, elist, filmThickness, self.filmDensity
