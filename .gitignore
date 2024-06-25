@@ -31,6 +31,7 @@ depo*.cpython-*.pyc
 depoDemo*.ipynb
 etchingDemo*.ipynb
 transport*.ipynb
+*.drawio
 *.npz
 *.npy
 *.vti

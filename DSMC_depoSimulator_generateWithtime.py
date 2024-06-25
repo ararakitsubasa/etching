@@ -7,12 +7,13 @@ import logging
 from Collision import transport
 
 class depo(transport):
-    def __init__(self, mirror, collision, pressure_pa, temperature, chamberSize, DXsec,
+    def __init__(self, mirror, collision, velNormalize, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
                  tstep, thickness,substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
         self.collider = collision
+        self.velNomalize = velNormalize
         self.depoThick = thickness
         self.param = param # n beta
         self.TS = TS
@@ -349,10 +350,11 @@ class depo(transport):
 
     def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
         np.random.seed(randomSeed)
-        energy = np.linalg.norm(velosity_matrix, axis=1)
-        velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
-        velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
-        velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
+        if self.velNomalize == True:
+            energy = np.linalg.norm(velosity_matrix, axis=1)
+            velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+            velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+            velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
         for i in range(10):
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
@@ -371,10 +373,11 @@ class depo(transport):
             velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), \
                                         self.max_velocity_w(Random1, Random2), \
                                             self.max_velocity_v(Random3)]).T
-            energy = np.linalg.norm(velosity_matrix, axis=1)
-            velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
-            velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
-            velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
+            if self.velNomalize == True:
+                energy = np.linalg.norm(velosity_matrix, axis=1)
+                velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+                velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+                velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
             weights = np.ones(velosity_matrix.shape[0])*weight
             result =  self.runDepo(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:

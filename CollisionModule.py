@@ -6,7 +6,8 @@ from scipy.spatial.transform import Rotation as R
 import logging
 
 class transport:
-    def __init__(self, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec, logname):
+    def __init__(self, boundaryType, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec, logname):
+        self.boundaryType = boundaryType # 'wafer' 'SMD'
         self.pressure = pressure_pa
         self.T = temperature
         self.N_A = 6.02214076*10**23
@@ -41,9 +42,14 @@ class transport:
         pos_cp = np.asarray(pos)
         vel_cp = np.asarray(vel)
 
-        pos_radius = np.linalg.norm(np.array([pos_cp[:, 0], pos_cp[:, 1]]), axis=0)
-
-        indices = np.array(pos_radius >= self.chamberX)
+        if self.boundaryType == 'wafer':
+            pos_radius = np.linalg.norm(np.array([pos_cp[:, 0], pos_cp[:, 1]]), axis=0)
+            indices = np.array(pos_radius >= self.chamberX)
+        elif self.boundaryType == 'SMD':
+            indices = np.logical_or(pos_cp[:, 0] >= self.cellSize_x * self.celllength, pos_cp[:, 0] <= -self.cellSize_x * self.celllength)
+            indices |= np.logical_or(pos_cp[:, 1] >= self.cellSize_y * self.celllength, pos_cp[:, 1] <= -self.cellSize_y * self.celllength)
+        else:
+            print('no boundary')
 
         if np.any(indices):
             pos_cp = pos_cp[~indices]
@@ -155,7 +161,7 @@ class transport:
         # q = -1.60217663*10**-19
         # m = 9.1093837*10**-31
         tmax = time
-        # tstep = 10**-11
+        tstep = self.tstep
         t = 0
         p1 = p0
         v1 = v0
@@ -173,6 +179,7 @@ class transport:
                 v1 = p2v2[0][1]
                 delx = np.linalg.norm(p1 - p2, axis=1)
                 vMag = np.linalg.norm(v1, axis=1)
+                vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
                 prob = self.collProb(self.ng_pa, KE, delx)
                 collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
@@ -183,7 +190,13 @@ class transport:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-                self.log.info('runStep:{}, timeStep:{}, collsion:{}, particleIn:{}'\
-                        .format(i, self.tstep, collList.shape[0], p1.shape[0]))
+
+                if vMax*tstep < 4*self.celllength:                    
+                    tstep *= 2
+                elif vMax*tstep > 8*self.celllength:
+                    tstep /= 2
+
+                self.log.info('runStep:{}, timeStep:{}, vMaxMove:{:.3f}, collsion:{}, particleIn:{}'\
+                        .format(i, tstep, vMax*tstep/self.celllength, collList.shape[0], p1.shape[0]))
         return collList, elist, self.depo_pos[1:]
     
