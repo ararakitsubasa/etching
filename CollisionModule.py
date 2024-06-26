@@ -6,7 +6,7 @@ from scipy.spatial.transform import Rotation as R
 import logging
 
 class transport:
-    def __init__(self, boundaryType, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec, logname):
+    def __init__(self, boundaryType, maxMove, timeStep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec, logname):
         self.boundaryType = boundaryType # 'wafer' 'SMD'
         self.pressure = pressure_pa
         self.T = temperature
@@ -22,10 +22,14 @@ class transport:
         self.cellSize_z = cellSize[2]
         self.celllength = celllength
         self.tstep = timeStep
+        self.maxMove = maxMove
         self.chamberX = chamberSize[0]
         self.chamberY = chamberSize[1]
         self.DXsec = DXsec
-        self.depo_pos = np.zeros((1,6))
+        self.depo_pos = []
+        # self.colltype_list = []
+        self.ionPos_list = []
+
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
         self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
@@ -38,48 +42,38 @@ class transport:
         self.log.addHandler(self.fh)
         self.log.info('-------Start--------')
     
-    def boundary(self, pos, vel):
-        pos_cp = np.asarray(pos)
-        vel_cp = np.asarray(vel)
+    def boundary(self, posvel):
 
         if self.boundaryType == 'wafer':
-            pos_radius = np.linalg.norm(np.array([pos_cp[:, 0], pos_cp[:, 1]]), axis=0)
-            indices = np.array(pos_radius >= self.chamberX)
+            pos_radius = np.linalg.norm(posvel[:, :2], axis=1)
+            indices = pos_radius >= self.chamberX
         elif self.boundaryType == 'SMD':
-            indices = np.logical_or(pos_cp[:, 0] >= self.cellSize_x * self.celllength, pos_cp[:, 0] <= -self.cellSize_x * self.celllength)
-            indices |= np.logical_or(pos_cp[:, 1] >= self.cellSize_y * self.celllength, pos_cp[:, 1] <= -self.cellSize_y * self.celllength)
+            indices = np.logical_or(posvel[:, 0] >= self.cellSize_x * self.celllength, posvel[:, 0] <= -self.cellSize_x * self.celllength)
+            indices |= np.logical_or(posvel[:, 1] >= self.cellSize_y * self.celllength, posvel[:, 1] <= -self.cellSize_y * self.celllength)
         else:
             print('no boundary')
 
         if np.any(indices):
-            pos_cp = pos_cp[~indices]
-            vel_cp = vel_cp[~indices]
+            posvel = posvel[~indices]
 
-        depo_indices = np.logical_or(pos_cp[:,2] > self.cellSize_z * self.celllength, pos_cp[:,2] < 0)
+        depo_indices = np.logical_or(posvel[:,2] > self.cellSize_z * self.celllength, posvel[:,2] < 0)
 
         if np.any(depo_indices):
-            self.depo_position(pos_cp[depo_indices], vel_cp[depo_indices])
-            pos_cp = pos_cp[~depo_indices]
-            vel_cp = vel_cp[~depo_indices]
+            self.depo_pos.append(posvel[depo_indices])
+            posvel = posvel[~depo_indices]
 
-        return pos_cp, vel_cp
+        return posvel
     
-    def depo_position(self, pos, vel):
-        PosVel = np.concatenate((pos, vel), axis=1)
-        self.depo_pos = np.vstack((self.depo_pos, PosVel))
+    # def depo_position(self, posvel):
+    #     self.depo_pos.append(posvel)
 
-    def getAcc_sparse(self, pos, vel):
+    def getAcc_sparse(self, posvel, tstep):
 
-        pos_cp = pos
-        vel_cp = vel
-        tStep_cp = self.tstep
+        posvelBoundary = self.boundary(posvel)
+        posvelAcc = np.copy(posvelBoundary)
+        posvelAcc[:, :3] = posvelBoundary[:, 3:] * tstep + posvelBoundary[:, :3]
 
-        pos_cp, Nvel_cp = self.boundary(pos_cp, vel_cp)
-
-        Nvel2_cp = Nvel_cp
-        cpos2_cp = Nvel_cp * tStep_cp + pos_cp
-
-        return np.array([pos_cp, Nvel_cp]), np.array([cpos2_cp, Nvel2_cp])
+        return posvelAcc, posvelBoundary
     
     def diVr_func(self, d_refi, eVr, wi):
         kb = 1.380649e-23
@@ -133,24 +127,19 @@ class transport:
         v_rotate = rz.apply(Vrotate)
         return v_rotate 
 
-    def addPtToList(self, pt, colltype, colltype_list, ionPos_list):
-        colltype_list = np.hstack((colltype_list, colltype))
-        indice = np.nonzero(colltype == 0)
-        ionPos_list = np.concatenate((ionPos_list, pt[indice[0]]))
+    def addPtToList(self, pt):
+        self.ionPos_list.append(pt)
 
-        return colltype_list, ionPos_list
-
-    def collision(self, prob, colltype_list, elist, KE, vMag, p2, v2):
+    def collision(self, prob, KE, vMag, posvelAcc):
         rand_val = np.random.rand(prob.shape[0])
-        indices = np.nonzero(rand_val < prob)
-        if indices[0].size == 0:
-            return colltype_list, elist, v2
+        indices = np.array(rand_val < prob)
+        if indices.any() == True:
+            v3 = self.newVel_gpu(posvelAcc[indices][:, 3:], vMag[indices])
+            posvelAcc[indices][:, 3:] = v3
+            self.addPtToList(posvelAcc[indices][:, :3])
+            return posvelAcc, np.sum(indices)
         else:
-            colltype = np.zeros(KE[indices[0]].size)
-            v3 = self.newVel_gpu(v2[indices[0]], vMag[indices[0]])
-            v2[indices[0]] = v3
-            collList, elist = self.addPtToList(p2[indices[0]], colltype, colltype_list, elist)
-            return collList, elist, v2
+            return posvelAcc, 0
         
     def collProb(self, n, KE, delx):
         Xsec_interp = np.interp(KE, self.Xsec[:], self.Xsectot[:])
@@ -158,45 +147,36 @@ class transport:
         return 1 - np.exp(-n * sigTot * delx)
     
     def runE(self, p0, v0, time):
-        # q = -1.60217663*10**-19
-        # m = 9.1093837*10**-31
+        PosVel = np.concatenate((p0, v0), axis=1)
         tmax = time
         tstep = self.tstep
         t = 0
-        p1 = p0
-        v1 = v0
-        collList = np.array([])
-        elist = np.array([[0, 0, 0]])
+
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                p2v2 = self.getAcc_sparse(p1, v1)
-                p2 = p2v2[1][0]
-                if p2.shape[0] < int(1e5):
+                posvelAcc, posvelBoundary = self.getAcc_sparse(PosVel, tstep)
+                if posvelAcc.shape[0] < int(1e5):
                     break
-                v2 = p2v2[1][1]
-                p1 = p2v2[0][0]
-                v1 = p2v2[0][1]
-                delx = np.linalg.norm(p1 - p2, axis=1)
-                vMag = np.linalg.norm(v1, axis=1)
+                delx = np.linalg.norm(posvelAcc[:, :3] - posvelBoundary[:, :3], axis=1)
+                vMag = np.linalg.norm(posvelBoundary[:, 3:], axis=1)
                 vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
                 prob = self.collProb(self.ng_pa, KE, delx)
-                collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
+                posvelAcc, collsionNum = self.collision(prob, KE, vMag, posvelAcc)
                 t += self.tstep
-                p1 = p2
-                v1 = v2
+                PosVel = posvelAcc
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
 
-                if vMax*tstep < 4*self.celllength:                    
+                if vMax*tstep < self.maxMove*self.celllength:                    
                     tstep *= 2
-                elif vMax*tstep > 8*self.celllength:
+                elif vMax*tstep > self.maxMove*2*self.celllength:
                     tstep /= 2
 
                 self.log.info('runStep:{}, timeStep:{}, vMaxMove:{:.3f}, collsion:{}, particleIn:{}'\
-                        .format(i, tstep, vMax*tstep/self.celllength, collList.shape[0], p1.shape[0]))
-        return collList, elist, self.depo_pos[1:]
+                        .format(i, tstep, vMax*tstep/self.celllength, collsionNum, PosVel.shape[0]))
+        return self.ionPos_list, self.depo_pos
     
