@@ -70,8 +70,9 @@ class transport:
     def getAcc_sparse(self, posvel, tstep):
 
         posvelBoundary = self.boundary(posvel)
-        posvelAcc = np.copy(posvelBoundary)
+        posvelAcc = np.zeros_like(posvelBoundary)
         posvelAcc[:, :3] = posvelBoundary[:, 3:] * tstep + posvelBoundary[:, :3]
+        posvelAcc[:, 3:] = posvelBoundary[:, 3:]
 
         return posvelAcc, posvelBoundary
     
@@ -111,6 +112,7 @@ class transport:
         return chi
 
     def newVel_gpu(self, v, vMag):
+        # print(v.shape)
         energy = 0.5*self.Al_m*vMag**2/self.q
         pN = energy.shape[0]
         vMagnew = vMag
@@ -132,12 +134,12 @@ class transport:
 
     def collision(self, prob, KE, vMag, posvelAcc):
         rand_val = np.random.rand(prob.shape[0])
-        indices = np.array(rand_val < prob)
-        if indices.any() == True:
+        indices = np.nonzero(rand_val < prob)[0]
+        if indices.size != 0:
             v3 = self.newVel_gpu(posvelAcc[indices][:, 3:], vMag[indices])
-            posvelAcc[indices][:, 3:] = v3
+            posvelAcc[:, 3:][indices] = v3
             self.addPtToList(posvelAcc[indices][:, :3])
-            return posvelAcc, np.sum(indices)
+            return posvelAcc, indices.shape[0]
         else:
             return posvelAcc, 0
         
@@ -163,7 +165,9 @@ class transport:
                 vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
                 prob = self.collProb(self.ng_pa, KE, delx)
+                # posvelCopy = np.copy(posvelAcc)
                 posvelAcc, collsionNum = self.collision(prob, KE, vMag, posvelAcc)
+                # rotateTure = np.allclose(posvelCopy, posvelAcc)
                 t += self.tstep
                 PosVel = posvelAcc
                 if int(t/tmax*100) > i:
