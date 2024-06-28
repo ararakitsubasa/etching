@@ -14,7 +14,12 @@ class transport:
         self.R = 8.31446261815324
         self.q = 1.60217663*10**-19
         self.Al_m = 44.803928e-27
-        self.IonMass = 39.938/(self.N_A*1000)
+        # self.IonMass = 39.938/(self.N_A*1000) # Argon?
+        self.atomMass = 1.66054e-27
+        self.kB = 1.380649e-23
+        self.Al_atom = 26.98
+        self.Ar_atom = 39.95
+        self.Cm_Ar = (2*self.kB*self.T/(self.Ar_atom*self.atomMass) )**0.5 # (2kT/m)**0.5 39.95 for the Ar
         self.mp = 27 # Al
         self.mg = 40 # Ar
         self.epsilion = 8.85*10**(-12)
@@ -44,6 +49,24 @@ class transport:
         self.log.addHandler(self.fh)
         self.log.info('-------Start--------')
     
+
+    def MaxwellMat(self, N):
+        coschi = 2*np.random.rand(N) - 1
+        sinchi = np.sqrt(1 - coschi**2)
+
+        Random1 = np.random.rand(N)
+        Random2 = np.random.rand(N)
+        Random3 = np.random.rand(N)
+
+        u = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.cos(2*np.pi*Random2))*sinchi
+
+        w = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.sin(2*np.pi*Random2))*sinchi
+
+        v = self.Cm_Ar*np.sqrt(-np.log(Random3))*coschi
+        
+        velosity_matrix = np.array([u, w, v]).T
+        return velosity_matrix
+
     def boundary(self, posvel):
 
         if self.boundaryType == 'wafer':
@@ -113,24 +136,19 @@ class transport:
         chi = self.DXsec[randChoice]
         return chi
 
-    def newVel_gpu(self, v, vMag):
-        # print(v.shape)
-        energy = 0.5*self.Al_m*vMag**2/self.q
-        pN = energy.shape[0]
-        vMagnew = vMag
-        vfilp = np.ones(v.shape[0])
-        filp_indice = np.array(v[:, 0] < 0)
-        vfilp[filp_indice] = -1
-        theta0 = np.arccos(v[:, 2]/vMag)*vfilp
-        phi0= np.arctan(v[:, 1]/v[:, 0])
-        chi = self.DCS_pdf(energy)
-        phi = 2*np.pi*np.random.rand(pN)
-        rotateMat = np.array([np.sin(chi)*np.cos(phi), np.sin(chi)*np.sin(phi), np.cos(chi)])
-        Vrotate = np.multiply(rotateMat, vMagnew).T
-        rz = R.from_matrix(self.rotate_matrix(phi0, theta0))
-        v_rotate = rz.apply(Vrotate)
-        v_rotate = (self.mp*v + self.mg*v_rotate)/(self.mp+self.mg)
-        return v_rotate 
+    def newVel_gpu(self, cp, cg):
+        N = cp.shape[0]
+        # cg = self.MaxwellMat(N)
+        cm = (self.Al_atom*cp + self.Ar_atom*cg)/(self.Al_atom+self.Ar_atom)
+        cr = cp - cg
+        cr_mag = np.linalg.norm(cr, axis=1)
+        eps = np.random.rand(N)*np.pi*2
+        coschi = np.random.rand(N)*2 - 1
+        sinchi = np.sqrt(1 - coschi*coschi)
+        postCollision_cr = cr_mag*np.array([coschi, sinchi*np.cos(eps),  sinchi*np.sin(eps)]).T
+        cp_p = cm + self.Ar_atom/(self.Al_atom + self.Ar_atom)*postCollision_cr
+        cg_p = cm - self.Al_atom/(self.Al_atom + self.Ar_atom)*postCollision_cr
+        return cp_p, cg_p
 
     def addPtToList(self, pt):
         self.ionPos_list.append(pt)
