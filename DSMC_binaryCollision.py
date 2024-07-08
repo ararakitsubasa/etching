@@ -32,6 +32,12 @@ class transport:
         self.maxMove = maxMove
         self.chamberX = chamberSize[0]
         self.chamberY = chamberSize[1]
+        self.chamberZ = chamberSize[2]
+        self.cellBinsX = np.linspace(self.chamberX[0][0], self.chamberX[0][1], self.cellSize_x)
+        self.cellBinsY = np.linspace(self.chamberY[0][0], self.chamberY[0][1], self.cellSize_y)
+        self.cellBinsZ = np.linspace(self.chamberZ[0][0], self.chamberZ[0][1], self.cellSize_z)
+        self.Fn = 1e5
+        self.sigmaTCR = 
         self.DXsec = DXsec
         self.depo_pos = []
         # self.colltype_list = []
@@ -94,12 +100,18 @@ class transport:
 
     def getAcc_sparse(self, posvel, tstep):
 
+        i = np.floor((posvel[:, 0]/self.celllength) + 0.5).astype(int)
+        j = np.floor((posvel[:, 1]/self.celllength) + 0.5).astype(int)
+        k = np.floor((posvel[:, 2]/self.celllength) + 0.5).astype(int)
+
+        nC, edges = np.histogramdd(posvel[:, :3], bins = (self.cellBinsX, self.cellBinsY, self.cellBinsZ))
+
         posvelBoundary = self.boundary(posvel)
         posvelAcc = np.zeros_like(posvelBoundary)
         posvelAcc[:, :3] = posvelBoundary[:, 3:] * tstep + posvelBoundary[:, :3]
         posvelAcc[:, 3:] = posvelBoundary[:, 3:]
 
-        return posvelAcc, posvelBoundary
+        return posvelAcc, posvelBoundary, nC
     
     def diVr_func(self, d_refi, eVr, wi):
         kb = 1.380649e-23
@@ -164,7 +176,9 @@ class transport:
         else:
             return posvelAcc, 0
         
-    def collProb(self, n, KE, delx):
+    def collProb(self, n, KE, delx, nC):
+
+        selectedPairs = 0.5*nC*(nC-1)*self.Fn*self.sigmaTCR*self.tstep
         Xsec_interp = np.interp(KE, self.Xsec[:], self.Xsectot[:])
         sigTot = Xsec_interp
         return 1 - np.exp(-n * sigTot * delx)
@@ -178,14 +192,14 @@ class transport:
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                posvelAcc, posvelBoundary = self.getAcc_sparse(PosVel, tstep)
+                posvelAcc, posvelBoundary, nC = self.getAcc_sparse(PosVel, tstep)
                 if posvelAcc.shape[0] < int(1e5):
                     break
                 delx = np.linalg.norm(posvelAcc[:, :3] - posvelBoundary[:, :3], axis=1)
                 vMag = np.linalg.norm(posvelBoundary[:, 3:], axis=1)
                 vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
+                prob = self.collProb(self.ng_pa, KE, delx, nC)
                 # posvelCopy = np.copy(posvelAcc)
                 posvelAcc, collsionNum = self.collision(prob, KE, vMag, posvelAcc)
                 # rotateTure = np.allclose(posvelCopy, posvelAcc)

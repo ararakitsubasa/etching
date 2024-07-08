@@ -1,8 +1,9 @@
 import numpy as np
 import time as Time
 from tqdm import tqdm, trange
-from scipy.special import gamma, factorial
+from scipy.special import gamma, factorial, erf
 from scipy.spatial.transform import Rotation as R
+
 import logging
 
 class transport:
@@ -15,9 +16,15 @@ class transport:
         self.q = 1.60217663*10**-19
         self.Al_m = 44.803928e-27
         self.IonMass = 39.938/(self.N_A*1000)
+        self.atomMass = 1.66054e-27
+        self.kB = 1.380649e-23
         self.mp = 27 # Al
         self.mg = 40 # Ar
+        self.Al_atom = 26.98
+        self.Ar_atom = 39.95
+        self.Cm_Ar = (2*self.kB*self.T/(self.Ar_atom*self.atomMass) )**0.5 # (2kT/m)**0.5 39.95 for the Ar
         self.epsilion = 8.85*10**(-12)
+        self.vg = np.sqrt(2*self.kB*self.T/self.IonMass)
         self.ng_pa = self.pressure/(self.R*self.T)*self.N_A
         self.cellSize_x = cellSize[0]
         self.cellSize_y = cellSize[1]
@@ -43,6 +50,24 @@ class transport:
         self.fh.setFormatter(self.formatter)
         self.log.addHandler(self.fh)
         self.log.info('-------Start--------')
+    
+
+    def MaxwellMat(self, N):
+        coschi = 2*np.random.rand(N) - 1
+        sinchi = np.sqrt(1 - coschi**2)
+
+        Random1 = np.random.rand(N)
+        Random2 = np.random.rand(N)
+        Random3 = np.random.rand(N)
+
+        u = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.cos(2*np.pi*Random2))*sinchi
+
+        w = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.sin(2*np.pi*Random2))*sinchi
+
+        v = self.Cm_Ar*np.sqrt(-np.log(Random3))*coschi
+        
+        velosity_matrix = np.array([u, w, v]).T
+        return velosity_matrix
     
     def boundary(self, posvel):
 
@@ -132,20 +157,40 @@ class transport:
         v_rotate = (self.mp*v + self.mg*v_rotate)/(self.mp+self.mg)
         return v_rotate 
 
+    def newVel_gpu_cr(self, cp):
+        N = cp.shape[0]
+        cg = self.MaxwellMat(N)
+        cm = (self.Al_atom*cp + self.Ar_atom*cg)/(self.Al_atom+self.Ar_atom)
+        cr = cp - cg
+        cr_mag = np.linalg.norm(cr, axis=1)
+        eps = np.random.rand(N)*np.pi*2
+        coschi = np.random.rand(N)*2 - 1
+        sinchi = np.sqrt(1 - coschi*coschi)
+        # postCollision_cr = cr_mag*np.array([coschi, sinchi*np.cos(eps),  sinchi*np.sin(eps)]).T
+        postCollision_cr = np.array([coschi*cr_mag, sinchi*np.cos(eps)*cr_mag,  sinchi*np.sin(eps)*cr_mag]).T
+        cp_p = cm + self.Ar_atom/(self.Al_atom + self.Ar_atom)*postCollision_cr
+        # cg_p = cm - self.Al_atom/(self.Al_atom + self.Ar_atom)*postCollision_cr
+        return cp_p
+    
     def addPtToList(self, pt):
         self.ionPos_list.append(pt)
 
-    def collision(self, prob, KE, vMag, posvelAcc):
+    def collision(self, prob, posvelAcc):
         rand_val = np.random.rand(prob.shape[0])
         indices = np.nonzero(rand_val < prob)[0]
         if indices.size != 0:
-            v3 = self.newVel_gpu(posvelAcc[indices][:, 3:], vMag[indices])
+            # v3 = self.newVel_gpu(posvelAcc[indices][:, 3:], vMag[indices])
+            v3 = self.newVel_gpu_cr(posvelAcc[indices][:, 3:])
             posvelAcc[:, 3:][indices] = v3
             self.addPtToList(posvelAcc[indices][:, :3])
             return posvelAcc, indices.shape[0]
         else:
             return posvelAcc, 0
         
+    def relVel(self, vmag):
+        x = vmag/self.vg
+        return self.vg*((x + 0.5/x)*erf(x) + 1/np.sqrt(np.pi)*np.exp(-x*x))
+
     def collProb(self, n, KE, delx):
         Xsec_interp = np.interp(KE, self.Xsec[:], self.Xsectot[:])
         sigTot = Xsec_interp
@@ -163,13 +208,14 @@ class transport:
                 posvelAcc, posvelBoundary = self.getAcc_sparse(PosVel, tstep)
                 if posvelAcc.shape[0] < int(1e5):
                     break
-                delx = np.linalg.norm(posvelAcc[:, :3] - posvelBoundary[:, :3], axis=1)
+                # delx = np.linalg.norm(posvelAcc[:, :3] - posvelBoundary[:, :3], axis=1)
                 vMag = np.linalg.norm(posvelBoundary[:, 3:], axis=1)
+                delx = self.relVel(vMag)*tstep
                 vMax = vMag.max()
                 KE = 0.5*self.Al_m*vMag**2/self.q
                 prob = self.collProb(self.ng_pa, KE, delx)
                 # posvelCopy = np.copy(posvelAcc)
-                posvelAcc, collsionNum = self.collision(prob, KE, vMag, posvelAcc)
+                posvelAcc, collsionNum = self.collision(prob, posvelAcc)
                 # rotateTure = np.allclose(posvelCopy, posvelAcc)
                 t += self.tstep
                 PosVel = posvelAcc
