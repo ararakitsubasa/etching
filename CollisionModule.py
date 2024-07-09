@@ -22,6 +22,9 @@ class transport:
         self.mg = 40 # Ar
         self.Al_atom = 26.98
         self.Ar_atom = 39.95
+        self.Ar_radius = 188e-12
+        self.Al_radius = 184e-12
+        self.sigmaT = np.pi*(self.Ar_radius + self.Al_radius)**2/4
         self.Cm_Ar = (2*self.kB*self.T/(self.Ar_atom*self.atomMass) )**0.5 # (2kT/m)**0.5 39.95 for the Ar
         self.epsilion = 8.85*10**(-12)
         self.vg = np.sqrt(2*self.kB*self.T/self.IonMass)
@@ -192,8 +195,8 @@ class transport:
         return self.vg*((x + 0.5/x)*erf(x) + 1/np.sqrt(np.pi)*np.exp(-x*x))
 
     def collProb(self, n, KE, delx):
-        Xsec_interp = np.interp(KE, self.Xsec[:], self.Xsectot[:])
-        sigTot = Xsec_interp
+        # Xsec_interp = np.interp(KE, self.Xsec[:], self.Xsectot[:])
+        sigTot = self.sigmaT
         return 1 - np.exp(-n * sigTot * delx)
     
     def runE(self, p0, v0, time):
