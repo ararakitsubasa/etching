@@ -24,7 +24,7 @@ class transport:
         self.Ar_atom = 39.95
         self.Ar_radius = 188e-12
         self.Al_radius = 184e-12
-        self.sigmaT = np.pi*(self.Ar_radius + self.Al_radius)**2/4
+        self.sigmaT = np.pi*(self.Ar_radius + self.Ar_radius)**2/4
         self.Cm_Ar = (2*self.kB*self.T/(self.Ar_atom*self.atomMass) )**0.5 # (2kT/m)**0.5 39.95 for the Ar
         self.epsilion = 8.85*10**(-12)
         self.vg = np.sqrt(2*self.kB*self.T/self.IonMass)
@@ -72,11 +72,10 @@ class transport:
         velosity_matrix = np.array([u, w, v]).T
         return velosity_matrix
       
-    def boundary(self, pos, vel, i, j, k, weights_arr):
+    def boundary(self, posvel, i, j, k):
         # print(pos)
-        pos_cp = np.asarray(pos)
-        vel_cp = np.asarray(vel)
-        weights_arr_cp = np.asarray(weights_arr)
+        pos_cp = np.asarray(posvel)
+
         i_cp = np.asarray(i)
         j_cp = np.asarray(j)
         k_cp = np.asarray(k)
@@ -123,48 +122,25 @@ class transport:
 
         if np.any(indices):
             pos_cp = pos_cp[~indices]
-            vel_cp = vel_cp[~indices]
-            weights_arr_cp = weights_arr_cp[~indices]
             i_cp = i_cp[~indices]
             j_cp = j_cp[~indices]
             k_cp = k_cp[~indices]
 
-        return pos_cp, vel_cp, i_cp, j_cp, k_cp, weights_arr_cp
-    
-    # def depo_position(self, posvel):
-    #     self.depo_pos.append(posvel)
+        return pos_cp
 
     def getAcc_sparse(self, posvel, tstep):
 
-        posvelBoundary = self.boundary(posvel)
+        i = np.floor((posvel[:, 0]/self.celllength) + 0.5).astype(int)
+        j = np.floor((posvel[:, 1]/self.celllength) + 0.5).astype(int)
+        k = np.floor((posvel[:, 2]/self.celllength) + 0.5).astype(int)
+
+        posvelBoundary = self.boundary(posvel, i, j, k)
         posvelAcc = np.zeros_like(posvelBoundary)
         posvelAcc[:, :3] = posvelBoundary[:, 3:] * tstep + posvelBoundary[:, :3]
         posvelAcc[:, 3:] = posvelBoundary[:, 3:]
 
         return posvelAcc, posvelBoundary
     
-    def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep):
-        dx = boxsize
-
-        pos_cp = pos
-        vel_cp = vel
-
-        tStep_cp = tStep
-
-        i = np.floor((pos_cp[:, 0]/dx) + 0.5).astype(int)
-        j = np.floor((pos_cp[:, 1]/dx) + 0.5).astype(int)
-        k = np.floor((pos_cp[:, 2]/dx) + 0.5).astype(int)
-
-        # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
-        pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
-        # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max = self.depo_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep)
-
-        Npos2_cp = Nvel_cp * tStep_cp + pos_cp
-
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
-
-
     def diVr_func(self, d_refi, eVr, wi):
         kb = 1.380649e-23
         Tref = 650
@@ -286,12 +262,12 @@ class transport:
                     pbar.update(1)
                     i += 1
 
-                if vMax*tstep < self.maxMove*self.celllength:                    
-                    tstep *= 2
-                elif vMax*tstep > self.maxMove*2*self.celllength:
-                    tstep /= 2
+                # if vMax*tstep < self.maxMove*self.celllength:                    
+                #     tstep *= 2
+                # elif vMax*tstep > self.maxMove*2*self.celllength:
+                #     tstep /= 2
 
                 self.log.info('runStep:{}, timeStep:{}, vMaxMove:{:.3f}, collsion:{}, particleIn:{}'\
                         .format(i, tstep, vMax*tstep/self.celllength, collsionNum, PosVel.shape[0]))
-        return self.ionPos_list, self.depo_pos
+        return self.ionPos_list, PosVel
     
