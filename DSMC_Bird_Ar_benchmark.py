@@ -130,9 +130,9 @@ class DSMC_Bird:
         self.rhoM += n2*self.Al_m
         self.dsmcrhoN += n
         for i in range(parcel.shape[0]):
-            idx = np.floor((parcel[i][0]/self.celllength) + 0.5).astype(int)
-            idy = np.floor((parcel[i][1]/self.celllength) + 0.5).astype(int)
-            idz = np.floor((parcel[i][2]/self.celllength) + 0.5).astype(int)
+            idx = np.floor((parcel[i][0]/self.celllength)).astype(int)
+            idy = np.floor((parcel[i][1]/self.celllength)).astype(int)
+            idz = np.floor((parcel[i][2]/self.celllength)).astype(int)
             self.linearKE[idx, idy, idz] += 0.5*self.constProp(parcel[i])[0]*np.linalg.norm(parcel[i, 3:6])**2
             self.internalE[idx, idy, idz] += self.constProp(parcel[i])[3]
             self.momentum[idx, idy, idz] += self.constProp(parcel[i])[0]*parcel[i, 3:6]
@@ -190,24 +190,6 @@ class DSMC_Bird:
             if ((sigmaTcR/self.sigmaTCRMax[cell[0], cell[1], cell[2]]) > np.random.rand()):
                 parcel[candidateP, 3:6], parcel[candidateQ, 3:6] = self.collide(parcel[candidateP], parcel[candidateQ])
 
-
-    def MaxwellMat(self, N):
-        coschi = 2*np.random.rand(N) - 1
-        sinchi = np.sqrt(1 - coschi**2)
-
-        Random1 = np.random.rand(N)
-        Random2 = np.random.rand(N)
-        Random3 = np.random.rand(N)
-
-        u = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.cos(2*np.pi*Random2))*sinchi
-
-        w = self.Cm_Ar*np.sqrt(-np.log(Random1))*(np.sin(2*np.pi*Random2))*sinchi
-
-        v = self.Cm_Ar*np.sqrt(-np.log(Random3))*coschi
-        
-        velosity_matrix = np.array([u, w, v]).T
-        return velosity_matrix
-      
     def boundary(self, posvel, i, j, k):
         # print(pos)
         pos_cp = np.asarray(posvel)
@@ -271,13 +253,16 @@ class DSMC_Bird:
         k = np.floor((posvel[:, 2]/self.celllength)).astype(int)
 
         posvelBoundary = self.boundary(posvel, i, j, k)
-        n, edges = np.histogramdd(posvelBoundary[:, :3], bins=(self.cellArrayX, self.cellArrayY, self.cellArrayZ))
+        n = np.histogramdd(posvelBoundary[:, :3], bins=(self.cellArrayX, self.cellArrayY, self.cellArrayZ))[0]
         
         posvelAcc = np.zeros_like(posvelBoundary)
         posvelAcc[:, :3] = posvelBoundary[:, 3:6] * self.tstep + posvelBoundary[:, :3]
         posvelAcc[:, 3:6] = posvelBoundary[:, 3:6]
 
         return posvelAcc, posvelBoundary, n
+
+    def inflow():
+        return 0
 
     def evolve(self):
         self.resetFields()
@@ -286,41 +271,22 @@ class DSMC_Bird:
 
 
 
+    def runE(self, parcel, time):
 
-    def runE(self, p0, v0, time):
-        PosVel = np.concatenate((p0, v0), axis=1)
         tmax = time
-        tstep = self.tstep
         t = 0
-
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                posvelAcc, posvelBoundary = self.getAcc_sparse(PosVel, tstep)
-                if posvelAcc.shape[0] < int(1e5):
-                    break
-                # delx = np.linalg.norm(posvelAcc[:, :3] - posvelBoundary[:, :3], axis=1)
-                vMag = np.linalg.norm(posvelBoundary[:, 3:], axis=1)
-                delx = self.relVel(vMag)*tstep
-                vMax = vMag.max()
-                KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
-                # posvelCopy = np.copy(posvelAcc)
-                posvelAcc, collsionNum = self.collision(prob, posvelAcc)
-                # rotateTure = np.allclose(posvelCopy, posvelAcc)
+                self.evolve()
                 t += self.tstep
-                PosVel = posvelAcc
+
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
 
-                # if vMax*tstep < self.maxMove*self.celllength:                    
-                #     tstep *= 2
-                # elif vMax*tstep > self.maxMove*2*self.celllength:
-                #     tstep /= 2
-
-                self.log.info('runStep:{}, timeStep:{}, vMaxMove:{:.3f}, collsion:{}, particleIn:{}'\
-                        .format(i, tstep, vMax*tstep/self.celllength, collsionNum, PosVel.shape[0]))
-        return self.ionPos_list, PosVel
+                self.log.info('runStep:{}, timeStep:{}'\
+                        .format(i, t))
+        return parcel
     
