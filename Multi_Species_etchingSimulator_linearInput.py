@@ -90,30 +90,31 @@ class etching(transport, surface_normal):
             parcel = parcel[~indices]
         return parcel
 
-    def etching_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes):
+    def reaction(self, parcel, theta):
+        reactionWeight = np.zeros(parcel.shape[0])
+        react1 = parcel[:, 9] == 1
+        react2 = parcel[:, 9] == 2
+        reactive_yield1 = self.get_yield1(theta[react1])  
+        reactive_yield2 = self.get_yield2(theta[react2])
+        reactionWeight[react1] = reactive_yield1
+        reactionWeight[react2] = reactive_yield2
+        return reactionWeight, parcel
 
-        try:
-            # indice_inject = np.array(film[i, j, k] > 5)np.logical_and(film < 0, film > -90)
-            indice_inject = np.logical_and(film[i, j, k] < 0, film[i, j, k] > -90)
-            # indice_inject = np.array(film[i, j, k] < 0) #etching
-        except IndexError:
-            print('get i out:{}'.format(i.max()))
-            print(i.max())
-            print('get j out:{}'.format(j.max()))
-            print(j.max())
-            print('get k out:{}'.format(k.max()))
-            print(k.max())
 
-        pos_1 = pos[indice_inject]
-        vel_1 = vel[indice_inject]
+
+    def etching_film(self, film, parcel, planes):
+
+        i = parcel[:, 6]
+        j = parcel[:, 7]
+        k = parcel[:, 8]
+
+        indice_inject = np.logical_and(film[i, j, k] < 0, film[i, j, k] > -90)
+
+        pos_1 = parcel[indice_inject, :3]
+        vel_1 = parcel[indice_inject, 3:6]
         # print(pos_1.shape[0])
         get_theta = self.get_inject_theta(planes, pos_1, vel_1)
-        # get_theta = -get_theta + np.pi
-        # cut_theta_low = np.where(get_theta >= 0, get_theta, np.abs(get_theta))
-        # surface_true = np.where(cut_theta_low < np.pi/2, cut_theta_low, -cut_theta_low + np.pi)
-        # print(surface_true.shape)
-        # etch_yield = self.get_yield(surface_true)
-        etch_yield = self.get_yield(get_theta)
+        # etch_yield = self.get_yield(get_theta)
 
         surface_depo = np.logical_and(film < 0, film > -90) #etching
         self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
@@ -130,6 +131,8 @@ class etching(transport, surface_normal):
 
         pos_1[:, 0] += 10*self.celllength
         pos_1[:, 1] += 10*self.celllength
+
+        reactionWeight, parcel = self.reaction(parcel[indice_inject], get_theta)
 
         dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=10)
 
@@ -155,7 +158,9 @@ class etching(transport, surface_normal):
             j1[indiceYMin] += self.cellSizeY
 
             # deposit the particle injected into the film
-            film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
+            # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
+            film[i1,j1,k1] -= reactionWeight*dd[:,kdi]/ddsum
+
 
         # delete the particle injected into the film
         if np.any(indice_inject):
