@@ -57,53 +57,38 @@ class etching(transport, surface_normal):
     def max_velocity_v(self, random3):
         return -self.Cm*np.sqrt(-np.log(random3))
 
-    def boundary(self, pos, vel, i, j, k, weights_arr):
-        # print(pos)
-        pos_cp = np.asarray(pos)
-        vel_cp = np.asarray(vel)
-        weights_arr_cp = np.asarray(weights_arr)
-        i_cp = np.asarray(i)
-        j_cp = np.asarray(j)
-        k_cp = np.asarray(k)
-        cellSize_x_cp = np.asarray(self.cellSizeX) 
-        cellSize_y_cp = np.asarray(self.cellSizeY) 
-        cellSize_z_cp = np.asarray(self.cellSizeZ) 
+    # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
+    def boundary(self, parcel):
 
         if self.symmetry == True:
-            indiceXMax = i_cp >= cellSize_x_cp
-            indiceXMin = i_cp < 0
+            indiceXMax = parcel[:, 6] >= self.cellSizeX
+            indiceXMin = parcel[:, 6] < 0
 
             # 使用布尔索引进行调整
-            i_cp[indiceXMax] -= cellSize_x_cp 
-            pos_cp[indiceXMax, 0] -= self.celllength * self.cellSizeX
+            parcel[indiceXMax, 6] -= self.cellSizeX
+            parcel[indiceXMax, 0] -= self.celllength * self.cellSizeX
 
-            i_cp[indiceXMin] += cellSize_x_cp
-            pos_cp[indiceXMin, 0] += self.celllength * self.cellSizeX
+            parcel[indiceXMin, 6] += self.cellSizeX
+            parcel[indiceXMin, 0] += self.celllength * self.cellSizeX
 
             # 检查并调整 j_cp 和对应的 pos_cp
-            indiceYMax = j_cp >= cellSize_y_cp
-            indiceYMin = j_cp < 0
+            indiceYMax = parcel[:, 7] >= self.cellSizeY
+            indiceYMin = parcel[:, 7] < 0
 
             # 使用布尔索引进行调整
-            j_cp[indiceYMax] -= cellSize_y_cp
-            pos_cp[indiceYMax, 1] -= self.celllength * self.cellSizeY
+            parcel[indiceYMax, 7] -= self.cellSizeY
+            parcel[indiceYMax, 1] -= self.celllength * self.cellSizeY
 
-            j_cp[indiceYMin] += cellSize_y_cp
-            pos_cp[indiceYMin, 1] += self.celllength * self.cellSizeY
+            parcel[indiceYMin, 7] += self.cellSizeY
+            parcel[indiceYMin, 1] += self.celllength * self.cellSizeY
         
-        indices = np.logical_or(i_cp >= cellSize_x_cp, i_cp < 0)
-        indices |= np.logical_or(j_cp >= cellSize_y_cp, j_cp < 0)
-        indices |= np.logical_or(k_cp >= cellSize_z_cp, k_cp < 0)
+        indices = np.logical_or(parcel[:, 6] >= self.cellSizeX, parcel[:, 6] < 0)
+        indices |= np.logical_or(parcel[:, 7] >= self.cellSizeY, parcel[:, 7] < 0)
+        indices |= np.logical_or(parcel[:, 8] >= self.cellSizeZ, parcel[:, 8] < 0)
 
         if np.any(indices):
-            pos_cp = pos_cp[~indices]
-            vel_cp = vel_cp[~indices]
-            weights_arr_cp = weights_arr_cp[~indices]
-            i_cp = i_cp[~indices]
-            j_cp = j_cp[~indices]
-            k_cp = k_cp[~indices]
-
-        return pos_cp, vel_cp, i_cp, j_cp, k_cp, weights_arr_cp
+            parcel = parcel[~indices]
+        return parcel
 
     def etching_film(self, film, pos, vel, i, j, k, weights_arr, depoStep, planes):
 
