@@ -94,10 +94,12 @@ class etching(transport, surface_normal):
             self.parcel = self.parcel[~indices]
 
     def react_yield(theta, solid, gasType):
-        # solid = film[i, j, k, 9][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F2]
-
-        # react_table s[Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F2] g[F, O]
-        react_table = np.array([])
+        # solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
+        #react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
+        #react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
+        react_table = np.array([[[0.01,2], [0.01,3], [0.01,4], [0.01,-4], [0.05,7], [0.00,0], [0.05,8], [0.00,0],[0.06,10],[0.00,0]],
+                                [[0.05,5], [0.00,0], [0.00,0], [0.00, 0], [0.05,6], [0.00,0], [0.00,0], [0.00,0], [0.00,0],[0.00,0]],
+                                [[0.27,-1], [0.27,-2], [0.27,-3], [0.27,-4], [0.27,-5], [0.27,-6], [0.27,-7], [0.27,-8], [0.27,-9], [0.27,-10]]])
         react_rand = np.random.rand(theta.shape[0])
 
 
