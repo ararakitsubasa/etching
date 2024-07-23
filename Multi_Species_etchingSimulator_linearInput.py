@@ -10,6 +10,8 @@ from surface_normalize import surface_normal
 class etching(transport, surface_normal):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec, #transport
                  center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
+                 reaction_type, #reaction
+                 parcel, 
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN,
                  tstep, thickness, substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
@@ -26,12 +28,16 @@ class etching(transport, surface_normal):
         self.timeStep = tstep
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
-        self.substrate = film
+        # self.substrate = film
         self.n = n
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
 
+        self.self.parcel = self.parcel
+        self.film = film
+
+        self.reaction_type = reaction_type
         self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
@@ -58,65 +64,63 @@ class etching(transport, surface_normal):
         return -self.Cm*np.sqrt(-np.log(random3))
 
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
-    def boundary(self, parcel):
+    def boundary(self):
 
         if self.symmetry == True:
-            indiceXMax = parcel[:, 6] >= self.cellSizeX
-            indiceXMin = parcel[:, 6] < 0
+            indiceXMax = self.parcel[:, 6] >= self.cellSizeX
+            indiceXMin = self.parcel[:, 6] < 0
 
             # 使用布尔索引进行调整
-            parcel[indiceXMax, 6] -= self.cellSizeX
-            parcel[indiceXMax, 0] -= self.celllength * self.cellSizeX
+            self.parcel[indiceXMax, 6] -= self.cellSizeX
+            self.parcel[indiceXMax, 0] -= self.celllength * self.cellSizeX
 
-            parcel[indiceXMin, 6] += self.cellSizeX
-            parcel[indiceXMin, 0] += self.celllength * self.cellSizeX
+            self.parcel[indiceXMin, 6] += self.cellSizeX
+            self.parcel[indiceXMin, 0] += self.celllength * self.cellSizeX
 
             # 检查并调整 j_cp 和对应的 pos_cp
-            indiceYMax = parcel[:, 7] >= self.cellSizeY
-            indiceYMin = parcel[:, 7] < 0
+            indiceYMax = self.parcel[:, 7] >= self.cellSizeY
+            indiceYMin = self.parcel[:, 7] < 0
 
             # 使用布尔索引进行调整
-            parcel[indiceYMax, 7] -= self.cellSizeY
-            parcel[indiceYMax, 1] -= self.celllength * self.cellSizeY
+            self.parcel[indiceYMax, 7] -= self.cellSizeY
+            self.parcel[indiceYMax, 1] -= self.celllength * self.cellSizeY
 
-            parcel[indiceYMin, 7] += self.cellSizeY
-            parcel[indiceYMin, 1] += self.celllength * self.cellSizeY
+            self.parcel[indiceYMin, 7] += self.cellSizeY
+            self.parcel[indiceYMin, 1] += self.celllength * self.cellSizeY
         
-        indices = np.logical_or(parcel[:, 6] >= self.cellSizeX, parcel[:, 6] < 0)
-        indices |= np.logical_or(parcel[:, 7] >= self.cellSizeY, parcel[:, 7] < 0)
-        indices |= np.logical_or(parcel[:, 8] >= self.cellSizeZ, parcel[:, 8] < 0)
+        indices = np.logical_or(self.parcel[:, 6] >= self.cellSizeX, self.parcel[:, 6] < 0)
+        indices |= np.logical_or(self.parcel[:, 7] >= self.cellSizeY, self.parcel[:, 7] < 0)
+        indices |= np.logical_or(self.parcel[:, 8] >= self.cellSizeZ, self.parcel[:, 8] < 0)
 
         if np.any(indices):
-            parcel = parcel[~indices]
-        return parcel
+            self.parcel = self.parcel[~indices]
 
-    def reaction(self, parcel, theta):
-        reactionWeight = np.zeros(parcel.shape[0])
-        react1 = parcel[:, 9] == 1
-        react2 = parcel[:, 9] == 2
-        reactive_yield1 = self.get_yield1(theta[react1])  
-        reactive_yield2 = self.get_yield2(theta[react2])
-        reactionWeight[react1] = reactive_yield1
-        reactionWeight[react2] = reactive_yield2
-        return reactionWeight, parcel
+    # film[x, y, z, typeID]
+    def reaction(self, parcelIn, film, theta):
+        reaction_type = 5
+        reactionWeight = np.zeros(parcelIn.shape[0])
+        for i in range(reaction_type):
+            reaction = parcelIn[:, 9] == i
+            reactive_yield = self.get_yield(theta[reaction], film, i)  
+            reactionWeight[reaction] = reactive_yield
 
+        return reactionWeight
 
+    def etching_film(self, planes):
 
-    def etching_film(self, film, parcel, planes):
+        i = self.parcel[:, 6]
+        j = self.parcel[:, 7]
+        k = self.parcel[:, 8]
 
-        i = parcel[:, 6]
-        j = parcel[:, 7]
-        k = parcel[:, 8]
+        indice_inject = np.logical_and(self.film[i, j, k] < 0, self.film[i, j, k] > -90)
 
-        indice_inject = np.logical_and(film[i, j, k] < 0, film[i, j, k] > -90)
-
-        pos_1 = parcel[indice_inject, :3]
-        vel_1 = parcel[indice_inject, 3:6]
+        pos_1 = self.parcel[indice_inject, :3]
+        vel_1 = self.parcel[indice_inject, 3:6]
         # print(pos_1.shape[0])
         get_theta = self.get_inject_theta(planes, pos_1, vel_1)
         # etch_yield = self.get_yield(get_theta)
 
-        surface_depo = np.logical_and(film < 0, film > -90) #etching
+        surface_depo = np.logical_and(self.film < 0, self.film > -90) #etching
         self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
         self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
         self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
@@ -132,7 +136,7 @@ class etching(transport, surface_normal):
         pos_1[:, 0] += 10*self.celllength
         pos_1[:, 1] += 10*self.celllength
 
-        reactionWeight, parcel = self.reaction(parcel[indice_inject], get_theta)
+        # reactionWeight, self.parcel = self.reaction(self.parcel[indice_inject], get_theta)
 
         dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=10)
 
@@ -157,34 +161,30 @@ class etching(transport, surface_normal):
             j1[indiceYMax] -= self.cellSizeY
             j1[indiceYMin] += self.cellSizeY
 
+            reactionWeight, self.parcel = self.reaction(self.parcel[indice_inject], self.film[i1,j1,k1, 1], get_theta)
             # deposit the particle injected into the film
             # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
-            film[i1,j1,k1] -= reactionWeight*dd[:,kdi]/ddsum
+            self.film[i1,j1,k1] += reactionWeight*dd[:,kdi]/ddsum
 
 
         # delete the particle injected into the film
         if np.any(indice_inject):
-            pos = pos[~indice_inject]
-            vel = vel[~indice_inject]
-            i = i[~indice_inject]
-            j = j[~indice_inject]
-            k = k[~indice_inject]
-            weights_arr = weights_arr[~indice_inject]
+            self.parcel = self.parcel[~indice_inject]
 
-        film_indepo_indice = np.logical_or(film == -10, film == 100)
-        film_indepo_indice |= np.array(film == -50)
-        film_indepo = film[~film_indepo_indice]
+        film_indepo_indice = np.logical_or(self.film == -10, self.film == 100)
+        film_indepo_indice |= np.array(self.film == -50)
+        film_indepo = self.film[~film_indepo_indice]
         if film_indepo.shape[0] != 0:
             film_max = film_indepo.min()
         else:
             film_max = 0
         # surface_film = np.logical_and(film >= 1, film < 2) #depo
         # film[surface_film] = 20
-        surface_film = np.logical_and(film > -12, film < -11)
+        surface_film = np.logical_and(self.film > -12, self.film < -11)
         # film[surface_film] = int(100*depoStep)
-        film[surface_film] = 0
+        self.film[surface_film] = 0
 
-        return film, pos, vel, weights_arr, pos_1.shape[0], film_max, np.sum(surface_film), etch_yield
+        return self.film, pos, vel, weights_arr, pos_1.shape[0], film_max, np.sum(surface_film)
 
     def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes):
         dx = boxsize
@@ -208,15 +208,15 @@ class etching(transport, surface_normal):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, surface_true, etch_yield
 
-    def runEtch(self, v0, time, film, weights_arr, depoStep, emptyZ):
+    def runEtch(self, v0, time, weights_arr, depoStep, emptyZ):
 
         tmax = time
         tstep = self.timeStep
         t = 0
         inputCount = int(v0.shape[0]/(tmax/tstep))
-        film_1 = self.substrate
+        # film_1 = self.substrate
         cell = self.celllength
-        planes = self.get_pointcloud(film)
+        planes = self.get_pointcloud(self.film)
         count_etching = 0
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
@@ -295,7 +295,7 @@ class etching(transport, surface_normal):
                               .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_min, surface_true, etch_yield_max, 1 - etch_yield_max, p1.shape[0]))
         # del self.log, self.fh
 
-        return film, collList, elist
+        return self.film, collList, elist
     
     def posGenerator(self, IN, thickness, emptyZ):
         position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
