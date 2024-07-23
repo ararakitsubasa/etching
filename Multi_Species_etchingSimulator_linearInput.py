@@ -10,8 +10,7 @@ from surface_normalize import surface_normal
 class etching(transport, surface_normal):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec, #transport
                  center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
-                 reaction_type, #reaction
-                 parcel, 
+                 reaction_type, #reaction 
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN,
                  tstep, thickness, substrateTop, posGeneratorType, logname):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
@@ -34,7 +33,6 @@ class etching(transport, surface_normal):
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
 
-        self.self.parcel = self.parcel
         self.film = film
 
         self.reaction_type = reaction_type
@@ -184,38 +182,45 @@ class etching(transport, surface_normal):
         # film[surface_film] = int(100*depoStep)
         self.film[surface_film] = 0
 
-        return self.film, pos, vel, weights_arr, pos_1.shape[0], film_max, np.sum(surface_film)
+        return pos_1.shape[0], film_max, np.sum(surface_film)
 
-    def getAcc_depo(self, pos, vel, boxsize, tStep, film, weights_arr, depoStep, planes):
-        dx = boxsize
-
-        pos_cp = pos
-        vel_cp = vel
-
-        tStep_cp = tStep
-
-        i = np.floor((pos_cp[:, 0]/dx) + 0.5).astype(int)
-        j = np.floor((pos_cp[:, 1]/dx) + 0.5).astype(int)
-        k = np.floor((pos_cp[:, 2]/dx) + 0.5).astype(int)
+    def getAcc_depo(self, tStep, planes):
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
-        pos_cp, Nvel_cp, i, j, k, weights_arr = self.boundary(pos_cp, vel_cp, i, j, k, weights_arr)
+        self.boundary()
         # print(pos_cp)
-        film_depo, pos_cp, Nvel_cp, weights_arr_depo, depo_count, film_max, surface_true, etch_yield =\
-              self.etching_film(film, pos_cp, Nvel_cp, i, j, k, weights_arr, depoStep, planes)
+        depo_count, film_max, surface_true = self.etching_film(planes)
 
-        Npos2_cp = Nvel_cp * tStep_cp + pos_cp
+        # Npos2_cp = Nvel_cp * tStep_cp + pos_cp
+        self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
 
-        return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max, surface_true, etch_yield
+        return depo_count, film_max, surface_true
 
-    def runEtch(self, v0, time, weights_arr, depoStep, emptyZ):
+    # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
+    def Parcelgen(self, pos, vel, typeID):
 
+        i = np.floor((pos[:, 0]/self.celllength)).astype(int)
+        j = np.floor((pos[:, 1]/self.celllength)).astype(int)
+        k = np.floor((pos[:, 2]/self.celllength)).astype(int)
+
+        parcelIn = np.zeros((pos.shape[0], 10))
+        parcelIn[:, :3] = pos
+        parcelIn[:, 3:6] = vel
+        parcelIn[:, 6] = i
+        parcelIn[:, 7] = j
+        parcelIn[:, 8] = k
+        parcelIn[:, 9] = typeID
+        np.concatenate((self.parcel, parcelIn))
+
+
+    def runEtch(self, v0, typeID, time, emptyZ):
+
+        self.parcel = np.zeros((1, 10))
         tmax = time
         tstep = self.timeStep
         t = 0
         inputCount = int(v0.shape[0]/(tmax/tstep))
-        # film_1 = self.substrate
-        cell = self.celllength
+
         planes = self.get_pointcloud(self.film)
         count_etching = 0
         collList = np.array([])
@@ -235,64 +240,42 @@ class etching(transport, surface_normal):
 
         p1 = posGenerator(inputCount, filmThickness, emptyZ)
         v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-        weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        self.Parcelgen(p1, v1, typeIDIn)
+        self.parcel = self.parcel[1:, :]
 
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
-                p2v2 = self.getAcc_depo(p1, v1, cell, tstep, film_1, weights_arr_1, depoStep, planes)
+                depo_count, film_min, surface_true = self.getAcc_depo(tstep, planes)
 
-                surface_true = p2v2[6]
+                # surface_true = p2v2[6]
                 count_etching += surface_true
                 if count_etching >= 200:
                     count_etching = 0
-                    planes = self.get_pointcloud(film_1)
+                    planes = self.get_pointcloud(self.film)
                 # if surface_true <= 10 and i > 40:
                 #     break
 
-                p2 = p2v2[1][0]
-                if p2.shape[0] == 0:
-                    break
-                v2 = p2v2[1][1]
-                p1 = p2v2[0][0]
-                v1 = p2v2[0][1]
-                film_1 = p2v2[2]
-                weights_arr_1 = p2v2[3]
-                depo_count = p2v2[4]
-                film_min = p2v2[5]
-                etch_yield = p2v2[7]
-                if etch_yield.shape[0] != 0:
-                    etch_yield_large = np.sum(etch_yield >= 0.5)
-                    etch_yield_max = etch_yield_large/etch_yield.shape[0]
-                else:
-                    etch_yield_max = 0
-                    etch_yield_min = 0
-                delx = np.linalg.norm(p1 - p2, axis=1)
-                vMag = np.linalg.norm(v1, axis=1)
-                vMax = vMag.max()
-                KE = 0.5*self.Al_m*vMag**2/self.q
-                prob = self.collProb(self.ng_pa, KE, delx)
-                collList, elist, v2 = self.collision(prob, collList, elist, KE, vMag, p2, v2)
                 t += tstep
-                p1 = p2
-                v1 = v2
-                pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
-                p1 = np.vstack((p1, pGenerate))
-                v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
-                weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
+
+                p1 = posGenerator(inputCount, filmThickness, emptyZ)
+                v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                self.Parcelgen(p1, v1, typeIDIn)
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-                vzMax = np.abs(v1[:,2]).max()
+                vzMax = np.abs(self.parcel[:,5]).max()
                 # if vMax*tstep < 0.1 and i > 2:
                 # if vzMax*tstep < 0.3*self.celllength:                    
                 #     tstep *= 2
                 # elif vzMax*tstep > 1*self.celllength:
                 #     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vMaxMove:{:.3f}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{}, etch_yield_max:{:2.2%}, etch_yield_min:{:2.2%}, input_count:{}'\
-                              .format(i, tstep, depo_count, vMax*tstep/self.celllength, vzMax*tstep/self.celllength, film_min, surface_true, etch_yield_max, 1 - etch_yield_max, p1.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vzMax:{:.3f}, filmMax:{:.3f}, etching:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, vzMax*tstep/self.celllength, film_min, surface_true,  p1.shape[0]))
         # del self.log, self.fh
 
         return self.film, collList, elist
