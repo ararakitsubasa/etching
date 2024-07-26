@@ -6,6 +6,44 @@ from tqdm import tqdm, trange
 import logging
 from Collision import transport
 from surface_normalize import surface_normal
+from numba import jit
+
+#solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
+#react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
+#react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
+
+react_table = np.array([[[0.01, 2], [0.01, 3], [0.01, 4], [0.01, -4], [0.05, 7], [0.00, 0], [0.05, 8], [0.00, 0], [0.06, 10], [0.00, 0]],
+                        [[0.05, 5], [0.00, 0], [0.00, 0], [0.00, 0], [0.05, 6], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0]],
+                        [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
+
+
+@jit(nopython=True)
+def reaction_yield(parcel, film):
+    choice = np.random.rand(parcel.shape[0], react_table.shape[1])
+    parcelGen = np.zeros(parcel.shape[0])
+    reactList = np.zeros(parcel.shape[0])
+    for i in range(parcel.shape[0]):
+        acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
+        
+        for j in range(film.shape[1]):
+            react_rate = react_table[parcel[i], j, 0]
+            if react_rate > choice[i, j]:
+                acceptList[j] = True
+        
+        # react_choice_indices = np.random.choice(int(np.sum(acceptList)))
+        react_choice_indices = np.where(acceptList)[0]
+        # print(react_choice_indices)
+        if react_choice_indices.size > 0:
+            react_choice = np.random.choice(react_choice_indices)
+            reactList[i] = react_choice
+            film[i, react_choice] -= 0.01
+            react_gen = react_table[parcel[i], react_choice, 1]
+            if react_gen > 0:
+                film[i, int(react_gen)-1] += 0.01
+            else:
+                parcelGen[i] = -react_gen
+                
+    return film, parcelGen, reactList
 
 class etching(transport, surface_normal):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec, #transport
@@ -93,26 +131,6 @@ class etching(transport, surface_normal):
         if np.any(indices):
             self.parcel = self.parcel[~indices]
 
-    def react_yield(theta, solid, gasType):
-        # solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
-        #react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
-        #react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
-        react_table = np.array([[[0.01,2], [0.01,3], [0.01,4], [0.01,-4], [0.05,7], [0.00,0], [0.05,8], [0.00,0],[0.06,10],[0.00,0]],
-                                [[0.05,5], [0.00,0], [0.00,0], [0.00, 0], [0.05,6], [0.00,0], [0.00,0], [0.00,0], [0.00,0],[0.00,0]],
-                                [[0.27,-1], [0.27,-2], [0.27,-3], [0.27,-4], [0.27,-5], [0.27,-6], [0.27,-7], [0.27,-8], [0.27,-9], [0.27,-10]]])
-        react_rand = np.random.rand(theta.shape[0])
-
-
-    # film[x, y, z, percent1, percent2 ...]
-    def reaction(self, parcelIn, film, theta):
-        reactionWeight = np.zeros(parcelIn.shape[0])
-        for i in range(self.reaction_type):
-            reaction = parcelIn[:, 9] == i
-            reactive_yield = self.react_yield(theta[reaction], film, i)  
-            reactionWeight[reaction] = reactive_yield
-
-        return reactionWeight
-
     def etching_film(self, planes):
 
         i = self.parcel[:, 6]
@@ -168,10 +186,10 @@ class etching(transport, surface_normal):
             j1[indiceYMax] -= self.cellSizeY
             j1[indiceYMin] += self.cellSizeY
 
-            reactionWeight = self.reaction(self.parcel[indice_inject], self.film[i1,j1,k1,1], get_theta)
+            reactionOut = reaction_yield(self.parcel[indice_inject], self.film[i1,j1,k1,:], get_theta)
             # deposit the particle injected into the film
             # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
-            self.film[i1,j1,k1,0] += reactionWeight*dd[:,kdi]/ddsum
+            self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
 
 
         # delete the particle injected into the film
