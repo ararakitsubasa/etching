@@ -15,7 +15,8 @@ from numba import jit
 react_table = np.array([[[0.01, 2], [0.01, 3], [0.01, 4], [0.01, -4], [0.05, 7], [0.00, 0], [0.05, 8], [0.00, 0], [0.06, 10], [0.00, 0]],
                         [[0.05, 5], [0.00, 0], [0.00, 0], [0.00, 0], [0.05, 6], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0]],
                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
-
+kB = 1.380649e-23
+T = 100
 
 @jit(nopython=True)
 def reaction_yield(parcel, film):
@@ -44,6 +45,23 @@ def reaction_yield(parcel, film):
                 parcelGen[i] = -react_gen
                 
     return film, parcelGen, reactList
+
+@jit(nopython=True)
+def SpecularReflect(vel, normal):
+    return vel - 2*vel@normal*normal
+
+
+@jit(nopython=True)
+def reemission(vel, normal, particleMass):
+    UN = np.zeros((vel.shape[0], 3))
+    for i in range(vel.shape[0]):
+        Ut = vel[i] - vel[i]@normal[i]*normal[i]
+        tw1 = Ut/np.linalg.norm(Ut)
+        tw2 = np.cross(tw1, normal)
+        U = np.sqrt(kB*T/particleMass[i])*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
+        UN[i] = U
+    return -UN
+
 
 class etching(transport, surface_normal):
     def __init__(self, mirror, pressure_pa, temperature, chamberSize, DXsec, #transport
@@ -187,6 +205,23 @@ class etching(transport, surface_normal):
             j1[indiceYMin] += self.cellSizeY
 
             reactionOut = reaction_yield(self.parcel[indice_inject], self.film[i1,j1,k1,:], get_theta)
+
+            parcel_togen = reactionOut[1]
+
+            # specular reflect
+            mirrorReflect_indice = np.where(parcel_togen == 0)
+            mirrorReflect_vel = SpecularReflect(self.parcel[indice_inject][mirrorReflect_indice][:,3:6], get_theta[mirrorReflect_indice])
+            self.Parcelgen(self.parcel[indice_inject][mirrorReflect_indice][:,:3], \
+                           mirrorReflect_vel, \
+                            self.parcel[indice_inject][mirrorReflect_indice][:,-1])
+
+            # diffusion reflect
+            diffusionReflect_indice = np.where(parcel_togen != 0)
+            diffusionReflect_vel = reemission(self.parcel[indice_inject][diffusionReflect_indice][:,3:6], \
+                                              get_theta[diffusionReflect_indice], parcel_togen[diffusionReflect_indice])
+            self.Parcelgen(self.parcel[indice_inject][diffusionReflect_indice][:,:3], \
+                           diffusionReflect_vel, \
+                            self.parcel[indice_inject][diffusionReflect_indice][:,-1])
             # deposit the particle injected into the film
             # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
             self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
