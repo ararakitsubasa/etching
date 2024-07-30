@@ -12,42 +12,49 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.3, 1], [0.7, 1]]])
-kB = 1.380649e-23
-T = 100
+react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
+                        [[0.200, -1, 0], [0.075, 0, -1]]])
+
 
 @jit(nopython=True)
 def reaction_yield(parcel, film):
+    num_parcels = parcel.shape[0]
+    num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
-    parcelGen = np.zeros(parcel.shape[0])
-    reactList = np.zeros(parcel.shape[0])
+    reactList = np.ones(parcel.shape[0])*-1
+
+    # Indicate if the film is zero
+    for i in range(num_parcels):
+        for j in range(num_reactions):
+            if film[i, j] == 0:
+                choice[i, j] = 1
+                
     for i in range(parcel.shape[0]):
         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
-        
         for j in range(film.shape[1]):
             react_rate = react_table[parcel[i], j, 0]
             if react_rate > choice[i, j]:
                 acceptList[j] = True
-        
-        # react_choice_indices = np.random.choice(int(np.sum(acceptList)))
         react_choice_indices = np.where(acceptList)[0]
-        # print(react_choice_indices)
+
         if react_choice_indices.size > 0:
             react_choice = np.random.choice(react_choice_indices)
             reactList[i] = react_choice
-            film[i, react_choice] -= 0.01
-            react_gen = react_table[parcel[i], react_choice, 1]
-            if react_gen > 0:
-                film[i, int(react_gen)-1] += 0.01
-            else:
-                parcelGen[i] = -react_gen
+            film[i, :] += 0.01*react_table[parcel[i], react_choice, 1:]
+            # react_gen = react_table[parcel[i], react_choice, 1]
+            # if react_gen > 0:
+            #     film[i, int(react_gen)-1] += 0.01
+            # else:
+            #     parcelGen[i] = -react_gen
                 
-    return film, parcelGen, reactList
+    return film, reactList
 
 @jit(nopython=True)
 def SpecularReflect(vel, normal):
     return vel - 2*vel@normal*normal
 
+kB = 1.380649e-23
+T = 100
 
 @jit(nopython=True)
 def reemission(vel, normal, particleMass):
@@ -150,9 +157,9 @@ class etching(surface_normal):
 
     def etching_film(self, planes):
 
-        i = self.parcel[:, 6]
-        j = self.parcel[:, 7]
-        k = self.parcel[:, 8]
+        i = self.parcel[:, 6].astype(int)
+        j = self.parcel[:, 7].astype(int)
+        k = self.parcel[:, 8].astype(int)
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
 
@@ -162,7 +169,7 @@ class etching(surface_normal):
         get_theta = self.get_inject_theta(planes, pos_1, vel_1)
         # etch_yield = self.get_yield(get_theta)
 
-        # reactionOut = reaction_yield(self.parcel[indice_inject], self.film[i1,j1,k1,:], get_theta)
+        self.film[i1,j1,k1,:], reactList = reaction_yield(self.parcel[indice_inject], self.film[i1,j1,k1,:])
 
         # surface_depo = np.logical_and(film >= 0, film < 1) # depo
         surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
@@ -225,7 +232,7 @@ class etching(surface_normal):
             # deposit the particle injected into the film
             # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
             # self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
-            self.film[i1,j1,k1,:] += 0.2*dd[:,kdi]/ddsum
+            self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
         # delete the particle injected into the film
         if np.any(indice_inject):
@@ -249,15 +256,21 @@ class etching(surface_normal):
 
         # Npos2_cp = Nvel_cp * tStep_cp + pos_cp
         self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
+        i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
+        j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
+        k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
+        self.parcel[:, 6] = i
+        self.parcel[:, 7] = j
+        self.parcel[:, 8] = k
 
         return depo_count #, film_max, surface_true
 
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
     def Parcelgen(self, pos, vel, typeID):
 
-        i = np.floor((pos[:, 0]/self.celllength)).astype(int)
-        j = np.floor((pos[:, 1]/self.celllength)).astype(int)
-        k = np.floor((pos[:, 2]/self.celllength)).astype(int)
+        i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
+        j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
+        k = np.floor((pos[:, 2]/self.celllength) + 0.5).astype(int)
 
         parcelIn = np.zeros((pos.shape[0], 10))
         parcelIn[:, :3] = pos
@@ -266,7 +279,7 @@ class etching(surface_normal):
         parcelIn[:, 7] = j
         parcelIn[:, 8] = k
         parcelIn[:, 9] = typeID
-        np.concatenate((self.parcel, parcelIn))
+        self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
     def runEtch(self, v0, typeID, time, emptyZ):
@@ -277,7 +290,7 @@ class etching(surface_normal):
         t = 0
         inputCount = int(v0.shape[0]/(tmax/tstep))
 
-        planes = self.get_pointcloud(self.film)
+        planes = self.get_pointcloud(np.sum(self.film, axis=-1))
         count_etching = 0
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
@@ -318,15 +331,17 @@ class etching(surface_normal):
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-                vzMax = np.abs(self.parcel[:,5]).max()
-                # if vMax*tstep < 0.1 and i > 2:
-                # if vzMax*tstep < 0.3*self.celllength:                    
-                #     tstep *= 2
-                # elif vzMax*tstep > 1*self.celllength:
-                #     tstep /= 2
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vzMax:{:.3f},  input_count:{}'\
-                              .format(i, tstep, depo_count, vzMax*tstep/self.celllength,   p1.shape[0]))
+                if np.any(self.film[:, :, self.depoThick, 0]) != 0:
+                    print('depo finish')
+                    break
+                for thick in range(self.film.shape[2]):
+                    if np.sum(self.film[:, :, thick, 0]) == 0:
+                        filmThickness = thick
+                        break
+
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, filmThickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, collList, elist
