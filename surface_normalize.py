@@ -14,7 +14,7 @@ class surface_normal:
         self.celllength = celllength
         # In for +1 out for -1
         self.InOrOut = InOrOut 
-        if yield_hist == None:
+        if yield_hist.all() == None:
             self.yield_hist = np.array([[1.0, 1.05,  1.2,  1.4,  1.5, 1.07, 0.65, 0.28, 0.08,  0], \
                                         [  0,   pi/18,   pi/9,   pi/6,   2*pi/9,   5*pi/18,   pi/3,   7*pi/18,   4*pi/9, pi/2]])
         else:
