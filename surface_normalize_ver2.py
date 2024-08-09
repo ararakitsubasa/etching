@@ -44,25 +44,20 @@ class surface_normal:
         surface_sparse = torch.zeros((xshape, yshape, zshape))
         
         # 获取当前平面与前后平面的布尔索引
-        current_plane = film == 0
-        prev_plane = torch.zeros_like(film)
-        next_plane = torch.zeros_like(film)
-        
-        prev_plane[:, :, 1:] = film[:, :, :-1]
-        next_plane[:, :, :-1] = film[:, :, 1:]
-        
+        current_plane = film != 0
+
         # 获取周围邻居的布尔索引
         neighbors = torch.zeros_like(film, dtype=torch.bool)
         
-        neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面
-        neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面
-        neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边
-        neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边
-        neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面
-        neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面
+        neighbors[1:, :, :] |= film[:-1, :, :] == 0  # 上面
+        neighbors[:-1, :, :] |= film[1:, :, :] == 0  # 下面
+        neighbors[:, 1:, :] |= film[:, :-1, :] == 0  # 左边
+        neighbors[:, :-1, :] |= film[:, 1:, :] == 0  # 右边
+        neighbors[:, :, 1:] |= film[:, :, :-1] == 0  # 前面
+        neighbors[:, :, :-1] |= film[:, :, 1:] == 0  # 后面
         
         # 获取满足条件的索引
-        condition = (current_plane & (prev_plane != 0)) | (current_plane & (next_plane != 0)) | (current_plane & neighbors)
+        condition = current_plane & neighbors
         
         # 更新表面稀疏张量
         surface_sparse[condition] = 1
@@ -258,6 +253,7 @@ class surface_normal:
     #     return planes_consist[0]
     
     def get_pointcloud(self, film):
+        film = np.sum(film[:,:,:,6:], axis=-1)
         test = self.scanZ(film)
         points = test.indices().T
         surface_tree = KDTree(points)
