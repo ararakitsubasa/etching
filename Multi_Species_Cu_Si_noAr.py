@@ -15,39 +15,41 @@ from numba import jit
 react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
                         [[0.200, -1, 0], [0.075, 0, -1]]])
 
-
+# etching act on film, depo need output
 @jit(nopython=True)
-def reaction_yield(parcel, film):
+def reaction_yield(parcel, film, theta):
     num_parcels = parcel.shape[0]
     num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
     reactList = np.ones(parcel.shape[0])*-1
-
-    # Indicate if the film is zero
     for i in range(num_parcels):
         for j in range(num_reactions):
-            if film[i, j] == 0:
+            if film[i, j] <= 0:
                 choice[i, j] = 1
-                
+    depo_parcel = np.zeros(parcel.shape[0])
     for i in range(parcel.shape[0]):
         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
         for j in range(film.shape[1]):
-            react_rate = react_table[parcel[i], j, 0]
+            react_rate = react_table[int(parcel[i, -1]), j, 0]
             if react_rate > choice[i, j]:
                 acceptList[j] = True
         react_choice_indices = np.where(acceptList)[0]
-
         if react_choice_indices.size > 0:
             react_choice = np.random.choice(react_choice_indices)
             reactList[i] = react_choice
-            film[i, :] += 0.01*react_table[parcel[i], react_choice, 1:]
-            # react_gen = react_table[parcel[i], react_choice, 1]
-            # if react_gen > 0:
-            #     film[i, int(react_gen)-1] += 0.01
-            # else:
-            #     parcelGen[i] = -react_gen
-                
-    return film, reactList
+            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
+                depo_parcel[i] = 1
+            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) < 0:
+                depo_parcel[i] = -1
+    for i in range(parcel.shape[0]):
+        if depo_parcel[i] == -1:
+            film[i, :] += 0.01 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+        if reactList[i] == -1:
+            print('parcel reflect', parcel[i,3:6])
+            print('theta reflect',  theta[i])
+            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+
+    return film, parcel, reactList, depo_parcel
 
 @jit(nopython=True)
 def SpecularReflect(vel, normal):
@@ -163,80 +165,94 @@ class etching(surface_normal):
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
 
-        pos_1 = self.parcel[indice_inject, :3]
-        vel_1 = self.parcel[indice_inject, 3:6]
-        # print(pos_1.shape[0])
-        get_theta = self.get_inject_theta(planes, pos_1, vel_1)
-        # etch_yield = self.get_yield(get_theta)
+        print('indice inject', indice_inject)
+        if indice_inject.size != 0:
+            pos_1 = self.parcel[indice_inject, :3]
+            vel_1 = self.parcel[indice_inject, 3:6]
+            # print(pos_1.shape[0])
+            get_theta = self.get_inject_theta(planes, pos_1, vel_1)
+            # etch_yield = self.get_yield(get_theta)
+            print('get theta', get_theta)
+            self.film[indice_inject,:],self.parcel[indice_inject,:], reactList, depo_parcel = reaction_yield(self.parcel[indice_inject], self.film[indice_inject,:], get_theta)
 
-        self.film[i1,j1,k1,:], reactList = reaction_yield(self.parcel[indice_inject], self.film[i1,j1,k1,:])
+        # if np.any(depo_parcel == -1):
+        #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
+        # reflect_choice = np.where(reactList==-1)[0]
+        # reflect_parcel = SpecularReflect(vel_1[reflect_choice], get_theta[reflect_choice])
 
-        # surface_depo = np.logical_and(film >= 0, film < 1) # depo
-        surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
-        self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
-        self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
-        self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
-        self.surface_depo_mirror[10:10+self.cellSizeX, :10, :] = surface_depo[:, -10:, :]
-        self.surface_depo_mirror[10:10+self.cellSizeX:, -10:, :] = surface_depo[:, :10, :]
-        self.surface_depo_mirror[:10, :10, :] = surface_depo[-10:, -10:, :]
-        self.surface_depo_mirror[:10, -10:, :] = surface_depo[-10:, :10, :]
-        self.surface_depo_mirror[-10:, :10, :] = surface_depo[:10, -10:, :]
-        self.surface_depo_mirror[-10:, -10:, :] = surface_depo[:10, :10, :]
+        # define depo area 
+            surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
 
-        surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
+            # mirror
+            self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
+            self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
+            self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
+            self.surface_depo_mirror[10:10+self.cellSizeX, :10, :] = surface_depo[:, -10:, :]
+            self.surface_depo_mirror[10:10+self.cellSizeX:, -10:, :] = surface_depo[:, :10, :]
+            self.surface_depo_mirror[:10, :10, :] = surface_depo[-10:, -10:, :]
+            self.surface_depo_mirror[:10, -10:, :] = surface_depo[-10:, :10, :]
+            self.surface_depo_mirror[-10:, :10, :] = surface_depo[:10, -10:, :]
+            self.surface_depo_mirror[-10:, -10:, :] = surface_depo[:10, :10, :]
+            # mirror end
 
-        pos_1[:, 0] += 10*self.celllength
-        pos_1[:, 1] += 10*self.celllength
+            surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
 
-        dd, ii = surface_tree.query(pos_1, k=self.kdtreeN, workers=10)
+            to_depo = np.where(depo_parcel > 0)[0]
+            pos_1[:, 0] += 10*self.celllength
+            pos_1[:, 1] += 10*self.celllength
 
-        surface_indice = np.argwhere(self.surface_depo_mirror == True)
+            # depo for depo_parcel > 0
+            dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=10)
 
-        ddsum = np.sum(dd, axis=1)
+            surface_indice = np.argwhere(self.surface_depo_mirror == True)
 
-        # kdi order
-        for kdi in range(self.kdtreeN):
-            i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
-            j1 = surface_indice[ii][:,kdi,1]
-            k1 = surface_indice[ii][:,kdi,2]
-            i1 -= 10
-            j1 -= 10
-            indiceXMax = i1 >= self.cellSizeX
-            indiceXMin = i1 < 0
-            i1[indiceXMax] -= self.cellSizeX
-            i1[indiceXMin] += self.cellSizeX
+            ddsum = np.sum(dd, axis=1)
 
-            indiceYMax = j1 >= self.cellSizeY
-            indiceYMin = j1 < 0
-            j1[indiceYMax] -= self.cellSizeY
-            j1[indiceYMin] += self.cellSizeY
+            # kdi order
+            for kdi in range(self.kdtreeN):
+                i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
+                j1 = surface_indice[ii][:,kdi,1]
+                k1 = surface_indice[ii][:,kdi,2]
+                i1 -= 10
+                j1 -= 10
+                indiceXMax = i1 >= self.cellSizeX
+                indiceXMin = i1 < 0
+                i1[indiceXMax] -= self.cellSizeX
+                i1[indiceXMin] += self.cellSizeX
+
+                indiceYMax = j1 >= self.cellSizeY
+                indiceYMin = j1 < 0
+                j1[indiceYMax] -= self.cellSizeY
+                j1[indiceYMin] += self.cellSizeY
 
 
-            # parcel_togen = reactionOut[1]
+                # parcel_togen = reactionOut[1]
 
-            # specular reflect
-            # mirrorReflect_indice = np.where(parcel_togen == 0)
-            # mirrorReflect_vel = SpecularReflect(self.parcel[indice_inject][mirrorReflect_indice][:,3:6], get_theta[mirrorReflect_indice])
-            # self.Parcelgen(self.parcel[indice_inject][mirrorReflect_indice][:,:3], \
-            #                mirrorReflect_vel, \
-            #                 self.parcel[indice_inject][mirrorReflect_indice][:,-1])
+                # specular reflect
+                # mirrorReflect_indice = np.where(parcel_togen == 0)
+                # mirrorReflect_vel = SpecularReflect(self.parcel[indice_inject][mirrorReflect_indice][:,3:6], get_theta[mirrorReflect_indice])
+                # self.Parcelgen(self.parcel[indice_inject][mirrorReflect_indice][:,:3], \
+                #                mirrorReflect_vel, \
+                #                 self.parcel[indice_inject][mirrorReflect_indice][:,-1])
 
-            # # diffusion reflect
-            # diffusionReflect_indice = np.where(parcel_togen != 0)
-            # diffusionReflect_vel = reemission(self.parcel[indice_inject][diffusionReflect_indice][:,3:6], \
-            #                                   get_theta[diffusionReflect_indice], parcel_togen[diffusionReflect_indice])
-            # self.Parcelgen(self.parcel[indice_inject][diffusionReflect_indice][:,:3], \
-            #                diffusionReflect_vel, \
-            #                 self.parcel[indice_inject][diffusionReflect_indice][:,-1])
-            
-            # deposit the particle injected into the film
-            # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
-            # self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
-            self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
+                # # diffusion reflect
+                # diffusionReflect_indice = np.where(parcel_togen != 0)
+                # diffusionReflect_vel = reemission(self.parcel[indice_inject][diffusionReflect_indice][:,3:6], \
+                #                                   get_theta[diffusionReflect_indice], parcel_togen[diffusionReflect_indice])
+                # self.Parcelgen(self.parcel[indice_inject][diffusionReflect_indice][:,:3], \
+                #                diffusionReflect_vel, \
+                #                 self.parcel[indice_inject][diffusionReflect_indice][:,-1])
+                
+                # deposit the particle injected into the film
+                # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
+                # self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
+                self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
+            if np.any(np.where(reactList != -1)[0]):
+                self.parcel = self.parcel[~indice_inject[np.where(reactList != -1)[0]]]
         # delete the particle injected into the film
-        if np.any(indice_inject):
-            self.parcel = self.parcel[~indice_inject]
+        # if np.any(indice_inject):
+        #     self.parcel = self.parcel[~indice_inject]
 
 
         # # surface_film = np.logical_and(film >= 1, film < 2) #depo
@@ -245,7 +261,9 @@ class etching(surface_normal):
         # # film[surface_film] = int(100*depoStep)
         # self.film[surface_film] = 0
 
-        return pos_1.shape[0] #, film_max, np.sum(surface_film)
+            return pos_1.shape[0] #, film_max, np.sum(surface_film)
+        else:
+            return 0
 
     def getAcc_depo(self, tStep, planes):
 
@@ -368,9 +386,9 @@ class etching(surface_normal):
         return position_matrix
      
     def posGenerator_benchmark(self, IN, thickness, emptyZ):
-        position_matrix = np.array([self.cellSizeX/2, \
-                                    self.cellSizeY/2, \
-                                    self.cellSizeZ - emptyZ]).T
+        position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
+                                    np.ones(IN)*self.cellSizeY/2, \
+                                    np.ones(IN)*self.cellSizeZ - emptyZ]).T
         position_matrix *= self.celllength
         return position_matrix
     
@@ -404,6 +422,14 @@ class etching(surface_normal):
                 break             
         del self.log, self.fh
         return result
+    
+    def inputParticle(self, randomSeed, velosity_matrix, typeID, tmax, Zgap):
+        np.random.seed(randomSeed)
+        result =  self.runEtch(velosity_matrix, typeID, tmax, emptyZ=Zgap)
+        # if np.any(result[0][:, :, self.depoThick]) != 0:
+        #     break             
+        del self.log, self.fh 
+        return result  
 
     def depo_position_increase_cosVel(self, randomSeed, N, tmax, weight, Zgap):
         np.random.seed(randomSeed)
@@ -451,3 +477,39 @@ class etching(surface_normal):
 
         del self.log, self.fh
         return result
+    
+film = np.zeros((100, 100, 100, 2))
+
+bottom = 10
+film[:, :, 0:bottom, 0] = 10 # bottom
+
+height = 80
+
+film[:, :40, 0:height, 0] = 10
+film[:, 60:, 0:height, 0] = 10
+etchfilm = film
+
+
+N = int(1e6)
+velosity_matrix = np.zeros((N, 3))
+tstep=1e-5
+celllength=1e-5
+velosity_matrix[:, 0] = -10 * celllength /tstep
+velosity_matrix[:, 1] = -10 * celllength /tstep
+velosity_matrix[:, 2] = -10 * celllength /tstep
+
+typeID = np.ones(N)
+
+print(velosity_matrix[0])
+
+logname = 'Multi_species_benchmark_0729'
+testEtch = etching(mirror=True, pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
+                                         depoThick=90, center_with_direction=np.array([[35,100,75]]), 
+                                         range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
+                                        reaction_type=False, param = [1.6, -0.7], N = 300000, 
+                                        sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
+                                        celllength=1e-5, kdtreeN=5, tstep=1e-5,
+                                        substrateTop=40,posGeneratorType='benchmark', logname=logname)
+
+
+etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 0)
