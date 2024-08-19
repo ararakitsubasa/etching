@@ -18,6 +18,9 @@ react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
 # etching act on film, depo need output
 @jit(nopython=True)
 def reaction_yield(parcel, film, theta):
+    # print('react parcel', parcel.shape)
+    # print('react film', film.shape)
+    # print('react theta', theta.shape)
     num_parcels = parcel.shape[0]
     num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
@@ -45,8 +48,8 @@ def reaction_yield(parcel, film, theta):
         if depo_parcel[i] == -1:
             film[i, :] += 0.01 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
         if reactList[i] == -1:
-            print('parcel reflect', parcel[i,3:6])
-            print('theta reflect',  theta[i])
+            # print('parcel reflect', parcel[i,3:6])
+            # print('theta reflect',  theta[i])
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
@@ -71,7 +74,7 @@ def reemission(vel, normal, particleMass):
 
 
 class etching(surface_normal):
-    def __init__(self, mirror, pressure_pa, temperature, chamberSize,depoThick, #transport
+    def __init__(self, mirror, inputMethod, pressure_pa, temperature, chamberSize,depoThick, #transport
                  center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
                  reaction_type, #reaction 
                  param, N, sub_xy, film, n, cellSize, celllength, kdtreeN,
@@ -90,7 +93,7 @@ class etching(surface_normal):
         self.sub_y = sub_xy[1]
         # self.substrate = film
         self.depoThick = depoThick
-
+        self.inputMethod = inputMethod
         self.n = n
         self.N = N
         self.T = 300
@@ -165,16 +168,22 @@ class etching(surface_normal):
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
 
-        print('indice inject', indice_inject)
-        if indice_inject.size != 0:
-            pos_1 = self.parcel[indice_inject, :3]
-            vel_1 = self.parcel[indice_inject, 3:6]
-            # print(pos_1.shape[0])
-            get_theta = self.get_inject_theta(planes, pos_1, vel_1)
+        print('indice inject', indice_inject.shape)
+        # if indice_inject.size != 0:
+        pos_1 = self.parcel[indice_inject, :3]
+        vel_1 = self.parcel[indice_inject, 3:6]
+        ijk_1 = self.parcel[indice_inject, 6:9]
+        print('pos1 shape',pos_1.shape[0])
+        print('ijk_1',ijk_1.shape[0])
+        # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
+        if pos_1.size != 0:
+            get_theta = self.get_inject_normal(planes, pos_1, vel_1)
             # etch_yield = self.get_yield(get_theta)
-            print('get theta', get_theta)
-            self.film[indice_inject,:],self.parcel[indice_inject,:], reactList, depo_parcel = reaction_yield(self.parcel[indice_inject], self.film[indice_inject,:], get_theta)
-
+            # print('parcel_ijk', self.film[i[indice_inject], j[indice_inject],k[indice_inject]].shape)
+            # print('get theta', get_theta.shape)
+            # print('parcel to react', self.parcel[indice_inject].shape)
+            self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
+            print('after react')
         # if np.any(depo_parcel == -1):
         #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
         # reflect_choice = np.where(reactList==-1)[0]
@@ -225,41 +234,15 @@ class etching(surface_normal):
                 j1[indiceYMax] -= self.cellSizeY
                 j1[indiceYMin] += self.cellSizeY
 
-
-                # parcel_togen = reactionOut[1]
-
-                # specular reflect
-                # mirrorReflect_indice = np.where(parcel_togen == 0)
-                # mirrorReflect_vel = SpecularReflect(self.parcel[indice_inject][mirrorReflect_indice][:,3:6], get_theta[mirrorReflect_indice])
-                # self.Parcelgen(self.parcel[indice_inject][mirrorReflect_indice][:,:3], \
-                #                mirrorReflect_vel, \
-                #                 self.parcel[indice_inject][mirrorReflect_indice][:,-1])
-
-                # # diffusion reflect
-                # diffusionReflect_indice = np.where(parcel_togen != 0)
-                # diffusionReflect_vel = reemission(self.parcel[indice_inject][diffusionReflect_indice][:,3:6], \
-                #                                   get_theta[diffusionReflect_indice], parcel_togen[diffusionReflect_indice])
-                # self.Parcelgen(self.parcel[indice_inject][diffusionReflect_indice][:,:3], \
-                #                diffusionReflect_vel, \
-                #                 self.parcel[indice_inject][diffusionReflect_indice][:,-1])
-                
-                # deposit the particle injected into the film
-                # film[i1,j1,k1] -= weights_arr[indice_inject]*etch_yield*dd[:,kdi]/ddsum
-                # self.film[i1,j1,k1,:] += reactionOut[0]*dd[:,kdi]/ddsum
+        # delete the particle injected into the film
                 self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
             if np.any(np.where(reactList != -1)[0]):
-                self.parcel = self.parcel[~indice_inject[np.where(reactList != -1)[0]]]
+                indice_inject[np.where(reactList == -1)[0]] = False
+                self.parcel = self.parcel[~indice_inject]
         # delete the particle injected into the film
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
-
-
-        # # surface_film = np.logical_and(film >= 1, film < 2) #depo
-        # # film[surface_film] = 20
-        # surface_film = np.logical_and(self.film[:, :, :, 0] > -12, self.film[:, :, :, 0] < -11)
-        # # film[surface_film] = int(100*depoStep)
-        # self.film[surface_film] = 0
 
             return pos_1.shape[0] #, film_max, np.sum(surface_film)
         else:
@@ -328,23 +311,28 @@ class etching(surface_normal):
             self.log.info('using posGenerator')
             posGenerator = self.posGenerator 
 
-        p1 = posGenerator(inputCount, filmThickness, emptyZ)
-        v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-        typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-        self.Parcelgen(p1, v1, typeIDIn)
-        self.parcel = self.parcel[1:, :]
-
+        if self.inputMethod == 'bunch':
+            p1 = posGenerator(inputCount, filmThickness, emptyZ)
+            v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+            typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+            self.Parcelgen(p1, v1, typeIDIn)
+            self.parcel = self.parcel[1:, :]
+        else:
+            p1 = posGenerator(v0.shape[0], filmThickness, emptyZ)
+            self.Parcelgen(p1, v0, typeID)
+        print('parcel', self.parcel.shape)
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes)
-
+                print('parcel', self.parcel.shape)
                 t += tstep
 
-                p1 = posGenerator(inputCount, filmThickness, emptyZ)
-                v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                self.Parcelgen(p1, v1, typeIDIn)
+                if self.inputMethod == 'bunch':
+                    p1 = posGenerator(inputCount, filmThickness, emptyZ)
+                    v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                    typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                    self.Parcelgen(p1, v1, typeIDIn)
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
@@ -478,38 +466,40 @@ class etching(surface_normal):
         del self.log, self.fh
         return result
     
-film = np.zeros((100, 100, 100, 2))
 
-bottom = 10
-film[:, :, 0:bottom, 0] = 10 # bottom
+if __name__ == "__main__":
+    film = np.zeros((100, 100, 100, 2))
 
-height = 80
+    bottom = 10
+    film[:, :, 0:bottom, 0] = 10 # bottom
 
-film[:, :40, 0:height, 0] = 10
-film[:, 60:, 0:height, 0] = 10
-etchfilm = film
+    height = 80
 
-
-N = int(1e6)
-velosity_matrix = np.zeros((N, 3))
-tstep=1e-5
-celllength=1e-5
-velosity_matrix[:, 0] = -10 * celllength /tstep
-velosity_matrix[:, 1] = -10 * celllength /tstep
-velosity_matrix[:, 2] = -10 * celllength /tstep
-
-typeID = np.ones(N)
-
-print(velosity_matrix[0])
-
-logname = 'Multi_species_benchmark_0729'
-testEtch = etching(mirror=True, pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
-                                         depoThick=90, center_with_direction=np.array([[35,100,75]]), 
-                                         range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
-                                        reaction_type=False, param = [1.6, -0.7], N = 300000, 
-                                        sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
-                                        celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                                        substrateTop=40,posGeneratorType='benchmark', logname=logname)
+    film[:, :40, 0:height, 0] = 10
+    film[:, 60:, 0:height, 0] = 10
+    etchfilm = film
 
 
-etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 0)
+    N = int(1e6)
+    velosity_matrix = np.zeros((N, 3))
+    tstep=1e-5
+    celllength=1e-5
+    velosity_matrix[:, 0] = -1 * celllength /tstep
+    velosity_matrix[:, 1] = -1 * celllength /tstep
+    velosity_matrix[:, 2] = -1 * celllength /tstep
+
+    typeID = np.ones(N)
+
+    print(velosity_matrix[0])
+
+    logname = 'Multi_species_benchmark_0729'
+    testEtch = etching(mirror=True,inputMethod='allin', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
+                        depoThick=90, center_with_direction=np.array([[35,100,75]]), 
+                        range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
+                        reaction_type=False, param = [1.6, -0.7], N = 300000, 
+                        sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
+                        celllength=1e-5, kdtreeN=5, tstep=1e-5,
+                        substrateTop=40,posGeneratorType='benchmark', logname=logname)
+
+
+    etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 20)
