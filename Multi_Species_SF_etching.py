@@ -13,7 +13,15 @@ from numba import jit
 #react_t g[Cu] s  [Cu,       Si]
 
 react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
-                        [[0.200, -1, 0], [0.075, 0, -1]]])
+                        [[0.800, -1, 0], [0.075, 0, -1]]])
+
+#solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
+#react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
+#react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
+
+# react_table = np.array([[[0.01, 2], [0.01, 3], [0.01, 4], [0.01, -4], [0.05, 7], [0.00, 0], [0.05, 8], [0.00, 0], [0.06, 10], [0.00, 0]],
+#                         [[0.05, 5], [0.00, 0], [0.00, 0], [0.00, 0], [0.05, 6], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0]],
+#                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
 
 # etching act on film, depo need output
 @jit(nopython=True)
@@ -182,7 +190,8 @@ class etching(surface_normal):
             # print('parcel_ijk', self.film[i[indice_inject], j[indice_inject],k[indice_inject]].shape)
             # print('get theta', get_theta.shape)
             # print('parcel to react', self.parcel[indice_inject].shape)
-            self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
+            self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
+                reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
             print('after react')
         # if np.any(depo_parcel == -1):
         #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
@@ -332,8 +341,12 @@ class etching(surface_normal):
                 if self.inputMethod == 'bunch':
                     p1 = posGenerator(inputCount, filmThickness, emptyZ)
                     v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                    typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                    self.Parcelgen(p1, v1, typeIDIn)
+                    if v1.shape[0] != 0:
+                        typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                        self.Parcelgen(p1, v1, typeIDIn)
+
+                planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
@@ -486,7 +499,7 @@ if __name__ == "__main__":
     tstep=1e-5
     celllength=1e-5
     # velosity_matrix[:, 0] = -1 * celllength /tstep
-    velosity_matrix[:, 1] = -1 * celllength /tstep
+    # velosity_matrix[:, 1] = -1 * celllength /tstep
     velosity_matrix[:, 2] = -1 * celllength /tstep
 
     typeID = np.ones(N)
@@ -494,7 +507,7 @@ if __name__ == "__main__":
     print(velosity_matrix[0])
 
     logname = 'Multi_species_benchmark_0729'
-    testEtch = etching(mirror=True,inputMethod='allin', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
+    testEtch = etching(mirror=True,inputMethod='bunch', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
                         depoThick=90, center_with_direction=np.array([[35,100,75]]), 
                         range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
                         reaction_type=False, param = [1.6, -0.7], N = 300000, 

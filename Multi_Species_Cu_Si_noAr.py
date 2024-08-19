@@ -338,7 +338,7 @@ class etching(surface_normal):
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-
+                planes = self.get_pointcloud(np.sum(self.film, axis=-1))
                 if np.any(self.film[:, :, self.depoThick, 0]) != 0:
                     print('depo finish')
                     break
