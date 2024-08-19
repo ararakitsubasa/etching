@@ -46,11 +46,10 @@ def reaction_yield(parcel, film, theta):
                 depo_parcel[i] = -1
     for i in range(parcel.shape[0]):
         if depo_parcel[i] == -1:
-            film[i, :] += 0.01 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+            film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
         if reactList[i] == -1:
-            # print('parcel reflect', parcel[i,3:6])
-            # print('theta reflect',  theta[i])
-            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
@@ -62,15 +61,16 @@ kB = 1.380649e-23
 T = 100
 
 @jit(nopython=True)
-def reemission(vel, normal, particleMass):
-    UN = np.zeros((vel.shape[0], 3))
-    for i in range(vel.shape[0]):
-        Ut = vel[i] - vel[i]@normal[i]*normal[i]
-        tw1 = Ut/np.linalg.norm(Ut)
-        tw2 = np.cross(tw1, normal)
-        U = np.sqrt(kB*T/particleMass[i])*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
-        UN[i] = U
-    return -UN
+def reemission(vel, normal):
+    mass = 27*1.66e-27
+    Ut = vel - vel@normal*normal
+    tw1 = Ut/np.linalg.norm(Ut)
+    tw2 = np.cross(tw1, normal)
+    # U = np.sqrt(kB*T/particleMass[i])*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
+    U = np.sqrt(kB*T/mass)*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
+    UN = U / np.linalg.norm(U)
+        # UN[i] = U
+    return UN
 
 
 class etching(surface_normal):
@@ -168,13 +168,13 @@ class etching(surface_normal):
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
 
-        print('indice inject', indice_inject.shape)
+        # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
         vel_1 = self.parcel[indice_inject, 3:6]
         ijk_1 = self.parcel[indice_inject, 6:9]
-        print('pos1 shape',pos_1.shape[0])
-        print('ijk_1',ijk_1.shape[0])
+        # print('pos1 shape',pos_1.shape[0])
+        # print('ijk_1',ijk_1.shape[0])
         # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
         if pos_1.size != 0:
             get_theta = self.get_inject_normal(planes, pos_1, vel_1)
@@ -320,6 +320,7 @@ class etching(surface_normal):
         else:
             p1 = posGenerator(v0.shape[0], filmThickness, emptyZ)
             self.Parcelgen(p1, v0, typeID)
+            self.parcel = self.parcel[1:, :]
         print('parcel', self.parcel.shape)
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
@@ -484,7 +485,7 @@ if __name__ == "__main__":
     velosity_matrix = np.zeros((N, 3))
     tstep=1e-5
     celllength=1e-5
-    velosity_matrix[:, 0] = -1 * celllength /tstep
+    # velosity_matrix[:, 0] = -1 * celllength /tstep
     velosity_matrix[:, 1] = -1 * celllength /tstep
     velosity_matrix[:, 2] = -1 * celllength /tstep
 
