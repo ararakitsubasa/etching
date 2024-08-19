@@ -332,8 +332,9 @@ class etching(surface_normal):
                 if self.inputMethod == 'bunch':
                     p1 = posGenerator(inputCount, filmThickness, emptyZ)
                     v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                    typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
-                    self.Parcelgen(p1, v1, typeIDIn)
+                    if v1.shape[0] != 0:
+                        typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+                        self.Parcelgen(p1, v1, typeIDIn)
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)

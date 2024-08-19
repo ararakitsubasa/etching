@@ -5,7 +5,7 @@ import time as Time
 from tqdm import tqdm, trange
 import logging
 from Collision import transport
-from surface_normalize import surface_normal
+from surface_normalize_sf import surface_normal
 from numba import jit
 
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
@@ -387,9 +387,16 @@ class etching(surface_normal):
         position_matrix *= self.celllength
         return position_matrix
      
+    # def posGenerator_benchmark(self, IN, thickness, emptyZ):
+    #     position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
+    #                                 np.ones(IN)*self.cellSizeY/2, \
+    #                                 np.ones(IN)*self.cellSizeZ - emptyZ]).T
+    #     position_matrix *= self.celllength
+    #     return position_matrix
+    
     def posGenerator_benchmark(self, IN, thickness, emptyZ):
-        position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
-                                    np.ones(IN)*self.cellSizeY/2, \
+        position_matrix = np.array([np.random.rand(IN)*20 + self.cellSizeX/2, \
+                                    np.random.rand(IN)*20 + self.cellSizeY/2, \
                                     np.ones(IN)*self.cellSizeZ - emptyZ]).T
         position_matrix *= self.celllength
         return position_matrix
@@ -482,15 +489,17 @@ class etching(surface_normal):
     
 
 if __name__ == "__main__":
+    import pyvista as pv
+    import torch
     film = np.zeros((100, 100, 100, 2))
 
-    bottom = 10
+    bottom = 80
     film[:, :, 0:bottom, 0] = 10 # bottom
 
-    height = 80
+    # height = 80
 
-    film[:, :40, 0:height, 0] = 10
-    film[:, 60:, 0:height, 0] = 10
+    # film[:, :40, 0:height, 0] = 10
+    # film[:, 60:, 0:height, 0] = 10
     etchfilm = film
 
 
@@ -516,4 +525,28 @@ if __name__ == "__main__":
                         substrateTop=40,posGeneratorType='benchmark', logname=logname)
 
 
-    etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 20)
+    etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
+
+    sumFilm = np.sum(etching1[0], axis=-1)
+
+    depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
+    depo1 = depo1.indices().numpy().T
+
+    substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
+    substrute = substrute.indices().numpy().T
+    depomesh = pv.PolyData(depo1)
+    depomesh["radius"] = np.ones(depo1.shape[0])*0.5
+    geom = pv.Box()
+
+    submesh = pv.PolyData(substrute)
+    submesh["radius"] = np.ones(substrute.shape[0])*0.5
+
+    # Progress bar is a new feature on master branch
+    depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+
+    p = pv.Plotter()
+    p.add_mesh(depoglyphed, color='cyan')
+    p.add_mesh(subglyphed, color='dimgray')
+    p.enable_eye_dome_lighting()
+    p.show()
