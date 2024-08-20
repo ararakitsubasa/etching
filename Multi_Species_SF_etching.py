@@ -12,17 +12,36 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
-                        [[0.800, -1, 0], [0.075, 0, -1]]])
+# react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
+#                         [[0.800, -1, 0], [0.075, 0, -1]]])
 
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
 #react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
 
-# react_table = np.array([[[0.01, 2], [0.01, 3], [0.01, 4], [0.01, -4], [0.05, 7], [0.00, 0], [0.05, 8], [0.00, 0], [0.06, 10], [0.00, 0]],
-#                         [[0.05, 5], [0.00, 0], [0.00, 0], [0.00, 0], [0.05, 6], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0], [0.00, 0]],
-#                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
+react_table3 = np.array([[[0.9, 2], [0.9, 3], [0.9, 4], [0.9, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
+                        [[0.5, 5], [0.0, 0], [0.0, 0], [0.0, 0], [0.5, 6], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0]],
+                        [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
 
+
+# print(react_table3.shape)
+
+react_table = np.zeros((3, 10, 11))
+
+for i in range(react_table3.shape[0]):
+    for j in range(react_table3.shape[1]):
+        for k in range(react_table3.shape[2]):
+            react_table[i, j, 0] = react_table3[i, j, 0]
+            react_table[i, j, j+1] = -1
+            react_chem =  int(np.abs(react_table3[i, j, 1]))
+            if react_table3[i, j, 1] > 0:
+                react_plus_min = 1
+            elif react_table3[i, j, 1] < 0:
+                react_plus_min = -1
+            elif react_table3[i, j, 1] == 0:
+                react_plus_min = 0
+            react_table[i, j, react_chem] = react_plus_min
+# react_table[0, 3, 4] = -2
 # etching act on film, depo need output
 @jit(nopython=True)
 def reaction_yield(parcel, film, theta):
@@ -49,14 +68,17 @@ def reaction_yield(parcel, film, theta):
             react_choice = np.random.choice(react_choice_indices)
             reactList[i] = react_choice
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
+                print('deposition')
                 depo_parcel[i] = 1
-            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) < 0:
+            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) <= 0:
                 depo_parcel[i] = -1
     for i in range(parcel.shape[0]):
         if depo_parcel[i] == -1:
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+            print('chemistry',film[i])
         if reactList[i] == -1:
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            # print('reflection')
             # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
@@ -491,7 +513,7 @@ class etching(surface_normal):
 if __name__ == "__main__":
     import pyvista as pv
     import torch
-    film = np.zeros((100, 100, 100, 2))
+    film = np.zeros((100, 100, 100, 10))
 
     bottom = 80
     film[:, :, 0:bottom, 0] = 10 # bottom
@@ -511,7 +533,7 @@ if __name__ == "__main__":
     # velosity_matrix[:, 1] = -1 * celllength /tstep
     velosity_matrix[:, 2] = -1 * celllength /tstep
 
-    typeID = np.ones(N)
+    typeID = np.zeros(N)
 
     print(velosity_matrix[0])
 
@@ -546,7 +568,7 @@ if __name__ == "__main__":
     subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
 
     p = pv.Plotter()
-    p.add_mesh(depoglyphed, color='cyan')
+    # p.add_mesh(depoglyphed, color='cyan')
     p.add_mesh(subglyphed, color='dimgray')
     p.enable_eye_dome_lighting()
     p.show()
