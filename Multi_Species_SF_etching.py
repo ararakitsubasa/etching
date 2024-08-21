@@ -68,14 +68,14 @@ def reaction_yield(parcel, film, theta):
             react_choice = np.random.choice(react_choice_indices)
             reactList[i] = react_choice
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
-                print('deposition')
+                # print('deposition')
                 depo_parcel[i] = 1
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) <= 0:
                 depo_parcel[i] = -1
     for i in range(parcel.shape[0]):
         if depo_parcel[i] == -1:
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
-            print('chemistry',film[i])
+            # print('chemistry',film[i])
         if reactList[i] == -1:
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
@@ -207,14 +207,22 @@ class etching(surface_normal):
         # print('ijk_1',ijk_1.shape[0])
         # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
         if pos_1.size != 0:
-            get_theta = self.get_inject_normal(planes, pos_1, vel_1)
+            get_plane, get_theta = self.get_inject_normal(planes, pos_1, vel_1)
+
+            # print('get plane', get_plane.shape)
+            # print('i[indice_inject]',i[indice_inject].shape)
+
+            # print('get plane', get_plane[0])
+            # print('i[indice_inject]',i[indice_inject][0])
+            # print('j[indice_inject]',j[indice_inject][0])
+            # print('k[indice_inject]',k[indice_inject][0])
             # etch_yield = self.get_yield(get_theta)
             # print('parcel_ijk', self.film[i[indice_inject], j[indice_inject],k[indice_inject]].shape)
             # print('get theta', get_theta.shape)
             # print('parcel to react', self.parcel[indice_inject].shape)
-            self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
-                reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
-            print('after react')
+            self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
+                reaction_yield(self.parcel[indice_inject], self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]], get_theta)
+            # print('after react')
         # if np.any(depo_parcel == -1):
         #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
         # reflect_choice = np.where(reactList==-1)[0]
@@ -352,12 +360,12 @@ class etching(surface_normal):
             p1 = posGenerator(v0.shape[0], filmThickness, emptyZ)
             self.Parcelgen(p1, v0, typeID)
             self.parcel = self.parcel[1:, :]
-        print('parcel', self.parcel.shape)
+        # print('parcel', self.parcel.shape)
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes)
-                print('parcel', self.parcel.shape)
+                # print('parcel', self.parcel.shape)
                 t += tstep
 
                 if self.inputMethod == 'bunch':

@@ -148,10 +148,10 @@ class surface_normal:
         plane_tree = KDTree(plane_point*self.celllength)
 
         dd, ii = plane_tree.query(pos, k=1, workers=1)
-
+        plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return normal[ii]
+        return plane_point_int, normal[ii]
 
     def get_inject_theta(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
