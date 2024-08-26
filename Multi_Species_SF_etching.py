@@ -77,9 +77,9 @@ def reaction_yield(parcel, film, theta):
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
             # print('chemistry',film[i])
         if reactList[i] == -1:
-            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
-            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
@@ -102,6 +102,29 @@ def reemission(vel, normal):
         # UN[i] = U
     return UN
 
+def removeFloat(film):  # fast scanZ
+    
+    # 获取当前平面的非零元素布尔索引
+    current_plane = film != 0
+
+    # 创建一个全是False的布尔数组来存储邻居的检查结果
+    neighbors = np.zeros_like(film, dtype=bool)
+
+    # 检查各个方向的邻居是否为零
+    neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面的邻居不为0
+    neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面的邻居不为0
+    neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边的邻居不为0
+    neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边的邻居不为0
+    neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面的邻居不为0
+    neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面的邻居不为0
+
+    # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
+    condition = current_plane & ~neighbors
+
+    # 将孤立的单元格设为0
+    film[condition] = 0
+    
+    return film
 
 class etching(surface_normal):
     def __init__(self, mirror, inputMethod, pressure_pa, temperature, chamberSize,depoThick, #transport
@@ -189,6 +212,30 @@ class etching(surface_normal):
 
         if np.any(indices):
             self.parcel = self.parcel[~indices]
+
+    def removeFloat(self):  # fast scanZ
+        sumFilm = np.sum(self.film, axis=-1)
+        # 获取当前平面的非零元素布尔索引
+        current_plane = sumFilm != 0
+
+        # 创建一个全是False的布尔数组来存储邻居的检查结果
+        neighbors = np.zeros_like(sumFilm, dtype=bool)
+
+        # 检查各个方向的邻居是否为零
+        neighbors[1:, :, :] |= sumFilm[:-1, :, :] != 0  # 上面的邻居不为0
+        neighbors[:-1, :, :] |= sumFilm[1:, :, :] != 0  # 下面的邻居不为0
+        neighbors[:, 1:, :] |= sumFilm[:, :-1, :] != 0  # 左边的邻居不为0
+        neighbors[:, :-1, :] |= sumFilm[:, 1:, :] != 0  # 右边的邻居不为0
+        neighbors[:, :, 1:] |= sumFilm[:, :, :-1] != 0  # 前面的邻居不为0
+        neighbors[:, :, :-1] |= sumFilm[:, :, 1:] != 0  # 后面的邻居不为0
+
+        # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
+        condition = current_plane & ~neighbors
+
+        # 将孤立的单元格设为0
+        self.film[condition, :] = 0
+        
+        # return film
 
     def etching_film(self, planes):
 
@@ -291,6 +338,7 @@ class etching(surface_normal):
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         self.boundary()
+        self.removeFloat()
         # print(pos_cp)
         depo_count = self.etching_film(planes)
 
