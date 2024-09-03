@@ -203,7 +203,7 @@ class depo(transport):
 
         return np.array([pos_cp, Nvel_cp]), np.array([Npos2_cp, Nvel_cp]), film_depo, weights_arr_depo, depo_count, film_max
 
-    def runDepo(self, v0, time, film, weights_arr, depoStep, emptyZ):
+    def runDepo(self, v0, time, film, weights_arr, particlePos, depoStep, emptyZ):
 
         tmax = time
         tstep = self.timeStep
@@ -234,7 +234,9 @@ class depo(transport):
             self.log.info('using posGenerator')
             posGenerator = self.posGenerator 
 
-        p1 = posGenerator(inputCount, filmThickness, emptyZ)
+        # p1 = posGenerator(inputCount, filmThickness, emptyZ)
+        p1 = particlePos[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
+        print('p1 shape',p1.shape)
         v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         weights_arr_1 = weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
@@ -249,7 +251,8 @@ class depo(transport):
                 p1 = p2v2[0][0]
                 v1 = p2v2[0][1]
                 film_1 = p2v2[2]
-                if np.any(film_1[:, :, self.depoThick]) != 0:
+                nozzle_5 = np.array([277-184-2, 50, 120-6])
+                if np.any(film_1[nozzle_5[0], nozzle_5[1], self.depoThick]) != 0:
                     print('depo finish')
                     break
 
@@ -269,12 +272,13 @@ class depo(transport):
                 v1 = v2
 
                 for thick in range(film.shape[2]):
-                    if np.sum(film_1[:, :, thick]) == 0:
+                    if film_1[nozzle_5[0], nozzle_5[1], thick] == 0:
                         filmThickness = thick
                         break
 
-                pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
-                p1 = np.vstack((p1, pGenerate))
+                # pGenerate = posGenerator(inputCount, filmThickness, emptyZ)
+                # p1 = np.vstack((p1, pGenerate))
+                p1 = np.concatenate((p1, particlePos[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
                 v1 = np.vstack((v1, v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]))
                 weights_arr_1 = np.concatenate((weights_arr_1, weights_arr[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]), axis=0)
                 if int(t/tmax*100) > i:
@@ -384,4 +388,29 @@ class depo(transport):
                 break             
         del self.log, self.fh
         return result
+    
+    def depo_nozzle_vel_pos_fromDSMC(self, randomSeed, step, tmax, weight, vel_pos):
+        np.random.seed(randomSeed)
+        for i in range(step):
+            np.random.shuffle(vel_pos)
+            weights = np.ones(vel_pos.shape[0])*weight
+            result =  self.runDepo(vel_pos[:, :3], tmax, self.substrate, weights, vel_pos[:, 3:]*self.celllength, depoStep=step, emptyZ=10)
+        del self.log, self.fh
+        return result
+
+
+if __name__ == "__main__":
+    vel_pos = np.load('vel_pos_ID445.npy')
+    DXsec_Al = np.load('./DXsec_Al_1e8.npy')
+    film = np.load('ID445_boat.npy')
+
+    logname = 'ID445_0903'
+    test = depo(mirror=True,collision=False,velNormalize=True,pressure_pa=0.2, temperature=300, chamberSize=film.shape, DXsec=DXsec_Al,
+                                param = [1.6, -0.7], TS = 0.3, N = int(1e7), 
+                                sub_xy=[0,0], film=film, n=1, cellSize=film.shape, 
+                                celllength=1e-5, kdtreeN=5, tstep=1e-5, thickness=110,substrateTop=80,posGeneratorType='gen1', logname=logname)
+
+    deposit = test.depo_nozzle_vel_pos_fromDSMC(125, 1, 2e-2, 0.3, vel_pos)
+
+    print('finish_____depo')
     
