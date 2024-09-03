@@ -183,7 +183,7 @@ class etching(surface_normal):
             # print('get theta', get_theta.shape)
             # print('parcel to react', self.parcel[indice_inject].shape)
             self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
-            print('after react')
+            # print('after react')
         # if np.any(depo_parcel == -1):
         #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
         # reflect_choice = np.where(reactList==-1)[0]
@@ -470,6 +470,8 @@ class etching(surface_normal):
     
 
 if __name__ == "__main__":
+    import pyvista as pv
+    import torch
     film = np.zeros((100, 100, 100, 2))
 
     bottom = 10
@@ -490,7 +492,7 @@ if __name__ == "__main__":
     velosity_matrix[:, 1] = -1 * celllength /tstep
     velosity_matrix[:, 2] = -1 * celllength /tstep
 
-    typeID = np.ones(N)
+    typeID = np.zeros(N)
 
     print(velosity_matrix[0])
 
@@ -505,3 +507,27 @@ if __name__ == "__main__":
 
 
     etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 20)
+
+    sumFilm = np.sum(etching1[0], axis=-1)
+
+    depo1 = torch.Tensor(np.logical_and(sumFilm[:, :, :,]!=10, sumFilm[:, :, :,]!=0)).to_sparse()
+    depo1 = depo1.indices().numpy().T
+
+    substrute = torch.Tensor(sumFilm[:, :, :,]==10).to_sparse()
+    substrute = substrute.indices().numpy().T
+    depomesh = pv.PolyData(depo1)
+    depomesh["radius"] = np.ones(depo1.shape[0])*0.5
+    geom = pv.Box()
+
+    submesh = pv.PolyData(substrute)
+    submesh["radius"] = np.ones(substrute.shape[0])*0.5
+
+    # Progress bar is a new feature on master branch
+    depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+
+    p = pv.Plotter()
+    p.add_mesh(depoglyphed, color='cyan')
+    p.add_mesh(subglyphed, color='dimgray')
+    p.enable_eye_dome_lighting()
+    p.show()
