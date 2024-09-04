@@ -91,6 +91,7 @@ def reaction_yield(parcel, film, theta):
 @jit(nopython=True)
 def depo_on_surface(parcel, film, reactList, to_depo):
     for i in range(to_depo.shape[0]):
+        # print('depo on i', i)
         film[i, :] += react_table[int(parcel[to_depo][i, -1]), int(reactList[to_depo][i]), 1:]
     return film
 
@@ -306,7 +307,7 @@ class etching(surface_normal):
             # get_plane_depo, get_theta_depo = self.get_inject_normal(planes_etching, pos_1[to_depo], vel_1[to_depo])
             surface_tree_depo = KDTree(planes_depo[:,3:]*self.celllength)
 
-
+            depo_surface = np.array(planes_depo[:,3:], dtype=int)
             # # depo for depo_parcel > 0
             print('pos_1[to_depo].shape',pos_1[to_depo].shape)
             if pos_1[to_depo].shape[0] != 0:
@@ -318,9 +319,9 @@ class etching(surface_normal):
 
                 # kdi order
                 # for kdi in range(self.kdtreeN):
-                i1 = planes_depo[:,3:][ii][:,0] #[particle, order, xyz]
-                j1 = planes_depo[:,3:][ii][:,1]
-                k1 = planes_depo[:,3:][ii][:,2]
+                i1 = depo_surface[ii][:,0] #[particle, order, xyz]
+                j1 = depo_surface[ii][:,1]
+                k1 = depo_surface[ii][:,2]
                 i1 -= 5
                 j1 -= 5
                 indiceXMax = i1 >= self.cellSizeX
@@ -389,7 +390,7 @@ class etching(surface_normal):
         tstep = self.timeStep
         t = 0
         inputCount = int(v0.shape[0]/(tmax/tstep))
-
+        print('inputcount', inputCount)
 
         # mirror
         self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :] = self.film
@@ -674,7 +675,7 @@ if __name__ == "__main__":
     etchfilm = film
 
 
-    N = int(1e6)
+    N = int(1e5)
     velosity_matrix = np.zeros((N, 3))
     tstep=1e-5
     celllength=1e-5
@@ -687,7 +688,7 @@ if __name__ == "__main__":
     print(velosity_matrix[0])
 
     logname = 'Multi_species_benchmark_0729'
-    testEtch = etching(mirror=True,inputMethod='allin', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
+    testEtch = etching(mirror=True,inputMethod='bunch', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
                         depoThick=90, center_with_direction=np.array([[35,100,75]]), 
                         range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
                         reaction_type=False, param = [1.6, -0.7], N = 300000, 
