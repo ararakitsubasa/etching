@@ -340,11 +340,11 @@ class etching(surface_normal):
                     pbar.update(1)
                     i += 1
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
-                if np.any(self.film[:, :, self.depoThick, 0]) != 0:
+                if np.any(np.sum(self.film[:, :, self.depoThick, :])) != 0:
                     print('depo finish')
                     break
                 for thick in range(self.film.shape[2]):
-                    if np.sum(self.film[:, :, thick, 0]) == 0:
+                    if np.sum(self.film[:, :, thick, :]) == 0:
                         filmThickness = thick
                         break
 
@@ -392,7 +392,7 @@ class etching(surface_normal):
         # def runEtch(self, v0, typeID, time, emptyZ):
     def depo_position_increase_cosVel_normal(self, randomSeed, N, tmax, Zgap):
         np.random.seed(randomSeed)
-        for i in range(9):
+        for i in range(1):
             Random1 = np.random.rand(N)
             Random2 = np.random.rand(N)
             Random3 = np.random.rand(N)

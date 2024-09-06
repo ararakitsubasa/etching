@@ -89,10 +89,10 @@ def reaction_yield(parcel, film, theta):
     return film, parcel, reactList, depo_parcel
 
 @jit(nopython=True)
-def depo_on_surface(parcel, film, reactList, to_depo, weight):
+def depo_on_surface(parcel, film, reactList, to_depo):
     for i in range(to_depo.shape[0]):
         # print('depo on i', i)
-        film[i, :] += weight*react_table[int(parcel[to_depo][i, -1]), int(reactList[to_depo][i]), 1:]
+        film[i, :] += react_table[int(parcel[to_depo][i, -1]), int(reactList[to_depo][i]), 1:]
     return film
 
 @jit(nopython=True)
@@ -170,7 +170,7 @@ class etching(surface_normal):
         self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
-        # self.surface_depo_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
+        self.surface_depo_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ))
         # self.surface_etching_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
@@ -289,10 +289,6 @@ class etching(surface_normal):
             self.film[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
                 reaction_yield(self.parcel[indice_inject], self.film[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]], get_theta_etching)
             # print('after react')
-        # if np.any(depo_parcel == -1):
-        #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
-        # reflect_choice = np.where(reactList==-1)[0]
-        # reflect_parcel = SpecularReflect(vel_1[reflect_choice], get_theta[reflect_choice])
 
         # define depo area 
             # surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
@@ -459,7 +455,8 @@ class etching(surface_normal):
                 # self.surface_depo_mirror[-5:, :5, :] = self.film[:5, -5:, :]
                 # self.surface_depo_mirror[-5:, -5:, :] = self.film[:5, :5, :]
                 # mirror end
-
+                vzMax = np.max(self.parcel[:,5])
+                vzMin = np.min(self.parcel[:,5])
                 # print('parcel', self.parcel.shape)
                 t += tstep
 
@@ -489,8 +486,8 @@ class etching(surface_normal):
                         filmThickness = thick
                         break
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, filmThickness:{},  input_count:{}'\
-                              .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, vzMax, vzMin, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, planes_depo, planes_etching
@@ -540,7 +537,7 @@ class etching(surface_normal):
         # def runEtch(self, v0, typeID, time, emptyZ):
     def depo_position_increase_cosVel_normal(self, randomSeed, N, tmax, Zgap):
         np.random.seed(randomSeed)
-        for i in range(1):
+        for i in range(3):
             Random1 = np.random.rand(N)
             Random2 = np.random.rand(N)
             Random3 = np.random.rand(N)
@@ -687,12 +684,13 @@ if __name__ == "__main__":
     film = np.zeros((100, 100, 100, 2))
 
     bottom = 10
-    film[:, :, 0:bottom, 0] = 10 # bottom
+    fullcell = 100
+    film[:, :, 0:bottom, 0] = fullcell # bottom
 
     height = 80
 
-    film[:, :40, 0:height, 0] = 10
-    film[:, 60:, 0:height, 0] = 10
+    film[:, :40, 0:height, 0] = fullcell
+    film[:, 60:, 0:height, 0] = fullcell
     etchfilm = film
 
 
@@ -715,7 +713,7 @@ if __name__ == "__main__":
                         reaction_type=False, param = [1.6, -0.7], N = 300000, 
                         sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
                         celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                        substrateTop=40,posGeneratorType='benchmark',fullCell=10, logname=logname)
+                        substrateTop=40,posGeneratorType='benchmark',fullCell=fullcell, logname=logname)
 
 
     etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 20)
@@ -744,8 +742,8 @@ if __name__ == "__main__":
     # p.enable_eye_dome_lighting()
     # p.show()
 
-    point_cloud = pv.PolyData(etching1[1][:, 3:])
-    vectors = etching1[1][:, :3]
+    point_cloud = pv.PolyData(etching1[2][:, 3:])
+    vectors = etching1[2][:, :3]
 
     point_cloud['vectors'] = vectors
     arrows = point_cloud.glyph(
