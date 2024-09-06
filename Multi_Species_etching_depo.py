@@ -89,10 +89,10 @@ def reaction_yield(parcel, film, theta):
     return film, parcel, reactList, depo_parcel
 
 @jit(nopython=True)
-def depo_on_surface(parcel, film, reactList, to_depo):
+def depo_on_surface(parcel, film, reactList, to_depo, weight):
     for i in range(to_depo.shape[0]):
         # print('depo on i', i)
-        film[i, :] += react_table[int(parcel[to_depo][i, -1]), int(reactList[to_depo][i]), 1:]
+        film[i, :] += weight*react_table[int(parcel[to_depo][i, -1]), int(reactList[to_depo][i]), 1:]
     return film
 
 @jit(nopython=True)
@@ -170,8 +170,8 @@ class etching(surface_normal):
         self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
-        self.surface_depo_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
-        self.surface_etching_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
+        # self.surface_depo_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
+        # self.surface_etching_mirror = np.zeros((self.cellSizeX+10, self.cellSizeY+10, self.cellSizeZ, self.film.shape[3]))
         self.log = logging.getLogger()
         self.log.setLevel(logging.INFO)
         self.fh = logging.FileHandler(filename='./logfiles/{}.log'.format(logname), mode='w')
@@ -251,17 +251,20 @@ class etching(surface_normal):
 
     def etching_film(self, planes_etching, planes_depo):
 
-        i = self.parcel[:, 6].astype(int) + 5
-        j = self.parcel[:, 7].astype(int) + 5
+        # i = self.parcel[:, 6].astype(int) + 5
+        # j = self.parcel[:, 7].astype(int) + 5
+        i = self.parcel[:, 6].astype(int) 
+        j = self.parcel[:, 7].astype(int) 
         k = self.parcel[:, 8].astype(int)
-        sumFilm = np.sum(self.surface_depo_mirror, axis=-1)
+        # sumFilm = np.sum(self.surface_depo_mirror, axis=-1)
+        sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
 
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
-        pos_1[:, 0] += 5*self.celllength
-        pos_1[:, 1] += 5*self.celllength
+        # pos_1[:, 0] += 5*self.celllength
+        # pos_1[:, 1] += 5*self.celllength
         vel_1 = self.parcel[indice_inject, 3:6]
 
         # print('pos1 shape',pos_1.shape[0])
@@ -281,8 +284,10 @@ class etching(surface_normal):
             # print('parcel_ijk', self.film[i[indice_inject], j[indice_inject],k[indice_inject]].shape)
             # print('get theta', get_theta.shape)
             # print('parcel to react', self.parcel[indice_inject].shape)
-            self.surface_depo_mirror[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
-                reaction_yield(self.parcel[indice_inject], self.surface_depo_mirror[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]], get_theta_etching)
+            # self.surface_depo_mirror[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
+            #     reaction_yield(self.parcel[indice_inject], self.surface_depo_mirror[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]], get_theta_etching)
+            self.film[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
+                reaction_yield(self.parcel[indice_inject], self.film[get_plane_etching[:,0], get_plane_etching[:,1],get_plane_etching[:,2]], get_theta_etching)
             # print('after react')
         # if np.any(depo_parcel == -1):
         #     self.parcel = self.parcel[~indice_inject[np.where(depo_parcel == -1)[0]]]
@@ -309,7 +314,7 @@ class etching(surface_normal):
 
             depo_surface = np.array(planes_depo[:,3:], dtype=int)
             # # depo for depo_parcel > 0
-            print('pos_1[to_depo].shape',pos_1[to_depo].shape)
+            # print('pos_1[to_depo].shape',pos_1[to_depo].shape)
             if pos_1[to_depo].shape[0] != 0:
                 dd, ii = surface_tree_depo.query(pos_1[to_depo], k=1, workers=10)
 
@@ -322,17 +327,17 @@ class etching(surface_normal):
                 i1 = depo_surface[ii][:,0] #[particle, order, xyz]
                 j1 = depo_surface[ii][:,1]
                 k1 = depo_surface[ii][:,2]
-                i1 -= 5
-                j1 -= 5
-                indiceXMax = i1 >= self.cellSizeX
-                indiceXMin = i1 < 0
-                i1[indiceXMax] -= self.cellSizeX
-                i1[indiceXMin] += self.cellSizeX
+                # i1 -= 5
+                # j1 -= 5
+                # indiceXMax = i1 >= self.cellSizeX
+                # indiceXMin = i1 < 0
+                # i1[indiceXMax] -= self.cellSizeX
+                # i1[indiceXMin] += self.cellSizeX
 
-                indiceYMax = j1 >= self.cellSizeY
-                indiceYMin = j1 < 0
-                j1[indiceYMax] -= self.cellSizeY
-                j1[indiceYMin] += self.cellSizeY
+                # indiceYMax = j1 >= self.cellSizeY
+                # indiceYMin = j1 < 0
+                # j1[indiceYMax] -= self.cellSizeY
+                # j1[indiceYMin] += self.cellSizeY
 
                 self.film[i1,j1,k1,:] = depo_on_surface(self.parcel, self.film[i1,j1,k1,:], reactList, to_depo)
 
@@ -393,21 +398,22 @@ class etching(surface_normal):
         print('inputcount', inputCount)
 
         # mirror
-        self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :] = self.film
-        self.surface_depo_mirror[:5, 5:5+self.cellSizeY, :] = self.film[-5:, :, :]
-        self.surface_depo_mirror[-5:, 5:5+self.cellSizeY, :] = self.film[:5, :, :]
-        self.surface_depo_mirror[5:5+self.cellSizeX, :5, :] = self.film[:, -5:, :]
-        self.surface_depo_mirror[5:5+self.cellSizeX:, -5:, :] = self.film[:, :5, :]
-        self.surface_depo_mirror[:5, :5, :] = self.film[-5:, -5:, :]
-        self.surface_depo_mirror[:5, -5:, :] = self.film[-5:, :5, :]
-        self.surface_depo_mirror[-5:, :5, :] = self.film[:5, -5:, :]
-        self.surface_depo_mirror[-5:, -5:, :] = self.film[:5, :5, :]
+        # self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :] = self.film
+        # self.surface_depo_mirror[:5, 5:5+self.cellSizeY, :] = self.film[-5:, :, :]
+        # self.surface_depo_mirror[-5:, 5:5+self.cellSizeY, :] = self.film[:5, :, :]
+        # self.surface_depo_mirror[5:5+self.cellSizeX, :5, :] = self.film[:, -5:, :]
+        # self.surface_depo_mirror[5:5+self.cellSizeX:, -5:, :] = self.film[:, :5, :]
+        # self.surface_depo_mirror[:5, :5, :] = self.film[-5:, -5:, :]
+        # self.surface_depo_mirror[:5, -5:, :] = self.film[-5:, :5, :]
+        # self.surface_depo_mirror[-5:, :5, :] = self.film[:5, -5:, :]
+        # self.surface_depo_mirror[-5:, -5:, :] = self.film[:5, :5, :]
         # mirror end
 
-
-        planes_etching = self.get_pointcloud_Etching(np.sum(self.surface_depo_mirror, axis=-1))
-        planes_depo    = self.get_pointcloud_Depo(np.sum(self.surface_depo_mirror, axis=-1))
-
+        # print(np.sum(self.surface_depo_mirror, axis=-1).shape)
+        # planes_etching = self.get_pointcloud_Etching(np.sum(self.surface_depo_mirror, axis=-1))
+        # planes_depo    = self.get_pointcloud_Depo(np.sum(self.surface_depo_mirror, axis=-1))
+        planes_etching = self.get_pointcloud_Etching(np.sum(self.film, axis=-1))
+        planes_depo    = self.get_pointcloud_Depo(np.sum(self.film, axis=-1))
         collList = np.array([])
         elist = np.array([[0, 0, 0]])
 
@@ -441,6 +447,19 @@ class etching(surface_normal):
             i = 0
             while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes_etching, planes_depo)
+                # self.film = self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :]
+                # # mirror
+                # self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :] = self.film
+                # self.surface_depo_mirror[:5, 5:5+self.cellSizeY, :] = self.film[-5:, :, :]
+                # self.surface_depo_mirror[-5:, 5:5+self.cellSizeY, :] = self.film[:5, :, :]
+                # self.surface_depo_mirror[5:5+self.cellSizeX, :5, :] = self.film[:, -5:, :]
+                # self.surface_depo_mirror[5:5+self.cellSizeX:, -5:, :] = self.film[:, :5, :]
+                # self.surface_depo_mirror[:5, :5, :] = self.film[-5:, -5:, :]
+                # self.surface_depo_mirror[:5, -5:, :] = self.film[-5:, :5, :]
+                # self.surface_depo_mirror[-5:, :5, :] = self.film[:5, -5:, :]
+                # self.surface_depo_mirror[-5:, -5:, :] = self.film[:5, :5, :]
+                # mirror end
+
                 # print('parcel', self.parcel.shape)
                 t += tstep
 
@@ -451,20 +470,22 @@ class etching(surface_normal):
                         typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
                         self.Parcelgen(p1, v1, typeIDIn)
 
-                planes_etching = self.get_pointcloud_Etching(np.sum(self.surface_depo_mirror, axis=-1))
-                planes_depo    = self.get_pointcloud_Depo(np.sum(self.surface_depo_mirror, axis=-1))
-
+                # planes_etching = self.get_pointcloud_Etching(np.sum(self.surface_depo_mirror, axis=-1))
+                # planes_depo    = self.get_pointcloud_Depo(np.sum(self.surface_depo_mirror, axis=-1))
+                planes_etching = self.get_pointcloud_Etching(np.sum(self.film, axis=-1))
+                planes_depo    = self.get_pointcloud_Depo(np.sum(self.film, axis=-1))
+                # print(np.sum(self.surface_depo_mirror, axis=-1).shape)
                 if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
 
-                self.film = self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :]
-                if np.any(self.film[:, :, self.depoThick, 0]) != 0:
+                # self.film = self.surface_depo_mirror[5:5+self.cellSizeX, 5:5+self.cellSizeY, :]
+                if np.any(np.sum(self.film[:, :, self.depoThick, :])) != 0:
                     print('depo finish')
                     break
                 for thick in range(self.film.shape[2]):
-                    if np.sum(self.film[:, :, thick, 0]) == 0:
+                    if np.sum(self.film[:, :, thick, :]) == 0:
                         filmThickness = thick
                         break
 
@@ -472,7 +493,7 @@ class etching(surface_normal):
                               .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
-        return self.film, collList, elist
+        return self.film, planes_depo, planes_etching
     
     def posGenerator(self, IN, thickness, emptyZ):
         position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
@@ -519,7 +540,7 @@ class etching(surface_normal):
         # def runEtch(self, v0, typeID, time, emptyZ):
     def depo_position_increase_cosVel_normal(self, randomSeed, N, tmax, Zgap):
         np.random.seed(randomSeed)
-        for i in range(9):
+        for i in range(1):
             Random1 = np.random.rand(N)
             Random2 = np.random.rand(N)
             Random3 = np.random.rand(N)
@@ -532,7 +553,7 @@ class etching(surface_normal):
             velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
             velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
 
-            typeID = np.ones(N)
+            typeID = np.zeros(N)
             # def runEtch(self, v0, typeID, time, emptyZ):
             result =  self.runEtch(velosity_matrix, typeID, tmax, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
@@ -675,7 +696,7 @@ if __name__ == "__main__":
     etchfilm = film
 
 
-    N = int(1e5)
+    N = int(1e6)
     velosity_matrix = np.zeros((N, 3))
     tstep=1e-5
     celllength=1e-5
@@ -701,24 +722,43 @@ if __name__ == "__main__":
 
     sumFilm = np.sum(etching1[0], axis=-1)
 
-    depo1 = torch.Tensor(np.logical_and(sumFilm[:, :, :,]!=10, sumFilm[:, :, :,]!=0)).to_sparse()
-    depo1 = depo1.indices().numpy().T
+    # depo1 = torch.Tensor(np.logical_and(sumFilm[:, :, :,]!=10, sumFilm[:, :, :,]!=0)).to_sparse()
+    # depo1 = depo1.indices().numpy().T
 
-    substrute = torch.Tensor(sumFilm[:, :, :,]==10).to_sparse()
-    substrute = substrute.indices().numpy().T
-    depomesh = pv.PolyData(depo1)
-    depomesh["radius"] = np.ones(depo1.shape[0])*0.5
-    geom = pv.Box()
+    # substrute = torch.Tensor(sumFilm[:, :, :,]==10).to_sparse()
+    # substrute = substrute.indices().numpy().T
+    # depomesh = pv.PolyData(depo1)
+    # depomesh["radius"] = np.ones(depo1.shape[0])*0.5
+    # geom = pv.Box()
 
-    submesh = pv.PolyData(substrute)
-    submesh["radius"] = np.ones(substrute.shape[0])*0.5
+    # submesh = pv.PolyData(substrute)
+    # submesh["radius"] = np.ones(substrute.shape[0])*0.5
 
-    # Progress bar is a new feature on master branch
-    depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-    subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    # # Progress bar is a new feature on master branch
+    # depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    # subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
 
-    p = pv.Plotter()
-    p.add_mesh(depoglyphed, color='cyan')
-    p.add_mesh(subglyphed, color='dimgray')
-    p.enable_eye_dome_lighting()
-    p.show()
+    # p = pv.Plotter()
+    # p.add_mesh(depoglyphed, color='cyan')
+    # p.add_mesh(subglyphed, color='dimgray')
+    # p.enable_eye_dome_lighting()
+    # p.show()
+
+    point_cloud = pv.PolyData(etching1[1][:, 3:])
+    vectors = etching1[1][:, :3]
+
+    point_cloud['vectors'] = vectors
+    arrows = point_cloud.glyph(
+        orient='vectors',
+        scale=1000,
+        factor=2,
+    )
+
+    # Display the arrows
+    plotter = pv.Plotter()
+    plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
+    # plotter.add_mesh(arrows, color='lightblue')
+    # plotter.add_point_labels([point_cloud.center,], ['Center',],
+    #                          point_color='yellow', point_size=20)
+    plotter.show_grid()
+    plotter.show()

@@ -442,7 +442,7 @@ class etching(surface_normal):
                               .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
-        return self.film, collList, elist
+        return self.film, planes
     
     def posGenerator(self, IN, thickness, emptyZ):
         position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
@@ -607,24 +607,44 @@ if __name__ == "__main__":
 
     sumFilm = np.sum(etching1[0], axis=-1)
 
-    depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
-    depo1 = depo1.indices().numpy().T
+    # depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
+    # depo1 = depo1.indices().numpy().T
 
-    substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
-    substrute = substrute.indices().numpy().T
-    depomesh = pv.PolyData(depo1)
-    depomesh["radius"] = np.ones(depo1.shape[0])*0.5
-    geom = pv.Box()
+    # substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
+    # substrute = substrute.indices().numpy().T
+    # depomesh = pv.PolyData(depo1)
+    # depomesh["radius"] = np.ones(depo1.shape[0])*0.5
+    # geom = pv.Box()
 
-    submesh = pv.PolyData(substrute)
-    submesh["radius"] = np.ones(substrute.shape[0])*0.5
+    # submesh = pv.PolyData(substrute)
+    # submesh["radius"] = np.ones(substrute.shape[0])*0.5
 
-    # Progress bar is a new feature on master branch
-    depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-    subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    # # Progress bar is a new feature on master branch
+    # depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    # subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
 
-    p = pv.Plotter()
-    # p.add_mesh(depoglyphed, color='cyan')
-    p.add_mesh(subglyphed, color='dimgray')
-    p.enable_eye_dome_lighting()
-    p.show()
+    # p = pv.Plotter()
+    # # p.add_mesh(depoglyphed, color='cyan')
+    # p.add_mesh(subglyphed, color='dimgray')
+    # p.enable_eye_dome_lighting()
+    # p.show()
+
+
+    point_cloud = pv.PolyData(etching1[1][:, 3:])
+    vectors = etching1[1][:, :3]
+
+    point_cloud['vectors'] = vectors
+    arrows = point_cloud.glyph(
+        orient='vectors',
+        scale=1000,
+        factor=2,
+    )
+
+    # Display the arrows
+    plotter = pv.Plotter()
+    plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
+    # plotter.add_mesh(arrows, color='lightblue')
+    # plotter.add_point_labels([point_cloud.center,], ['Center',],
+    #                          point_color='yellow', point_size=20)
+    plotter.show_grid()
+    plotter.show()
