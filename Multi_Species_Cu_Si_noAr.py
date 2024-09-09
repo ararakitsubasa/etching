@@ -321,14 +321,15 @@ class etching(surface_normal):
             p1 = posGenerator(v0.shape[0], filmThickness, emptyZ)
             self.Parcelgen(p1, v0, typeID)
             self.parcel = self.parcel[1:, :]
-        print('parcel', self.parcel.shape)
+        # print('parcel', self.parcel.shape)
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
             while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes)
-                print('parcel', self.parcel.shape)
+                # print('parcel', self.parcel.shape)
                 t += tstep
-
+                vzMax = np.max(self.parcel[:,5])
+                vzMin = np.min(self.parcel[:,5])
                 if self.inputMethod == 'bunch':
                     p1 = posGenerator(inputCount, filmThickness, emptyZ)
                     v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
@@ -348,8 +349,8 @@ class etching(surface_normal):
                         filmThickness = thick
                         break
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, filmThickness:{},  input_count:{}'\
-                              .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, vzMax, vzMin, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, collList, elist
@@ -405,7 +406,7 @@ class etching(surface_normal):
             velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
             velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
 
-            typeID = np.ones(N)
+            typeID = np.zeros(N)
             # def runEtch(self, v0, typeID, time, emptyZ):
             result =  self.runEtch(velosity_matrix, typeID, tmax, emptyZ=Zgap)
             if np.any(result[0][:, :, self.depoThick]) != 0:
