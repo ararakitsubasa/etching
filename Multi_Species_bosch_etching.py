@@ -481,13 +481,19 @@ class etching(surface_normal):
     #                                 np.ones(IN)*self.cellSizeZ - emptyZ]).T
     #     position_matrix *= self.celllength
     #     return position_matrix
-    
     def posGenerator_benchmark(self, IN, thickness, emptyZ):
-        position_matrix = np.array([np.random.rand(IN)*20 + self.cellSizeX/2, \
-                                    np.random.rand(IN)*20 + self.cellSizeY/2, \
+        position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
+                                    np.ones(IN)*self.cellSizeY/2, \
                                     np.ones(IN)*self.cellSizeZ - emptyZ]).T
         position_matrix *= self.celllength
         return position_matrix
+    
+    # def posGenerator_benchmark(self, IN, thickness, emptyZ):
+    #     position_matrix = np.array([np.random.rand(IN)*20 + self.cellSizeX/2, \
+    #                                 np.random.rand(IN)*20 + self.cellSizeY/2, \
+    #                                 np.ones(IN)*self.cellSizeZ - emptyZ]).T
+    #     position_matrix *= self.celllength
+    #     return position_matrix
     
     def depo_position_increase(self, randomSeed, velosity_matrix, tmax, weight, Zgap):
         np.random.seed(randomSeed)
