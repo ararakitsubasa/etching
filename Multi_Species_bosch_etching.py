@@ -12,8 +12,8 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
-                        [[0.800, -1, 0], [0.075, 0, -1]]])
+# react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
+#                         [[0.800, -1, 0], [0.075, 0, -1]]])
 
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, C4F8]
 #react_t g[F, c4f8, ion] s  [1,          2,           3,          4,       5 ]
@@ -47,9 +47,9 @@ react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
 #react_t g[F, c4f8, ion] s  [1,    2 ]
 #react_t g[F, c4f8, ion] s  [Si, C4F8]
 
-# react_table = np.array([[[0.700, -0.25, 0], [0.0  , 0,  0]],
-#                         [[0.800,  0, 1], [0.800, 0,  1]],
-#                         [[0.9 ,  -1, 0], [0.9  , 0, -1]]])
+react_table = np.array([[[0.200, -1, 0], [0.0  , 0,  0]],
+                        [[0.800,  0, 1], [0.0, 0,  0]],
+                        [[0.9 ,  -1, 0], [0.9  , 0, -1]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -87,9 +87,9 @@ def reaction_yield(parcel, film, theta):
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
             # print('chemistry',film[i])
         if reactList[i] == -1:
-            # parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
-            parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
@@ -137,7 +137,7 @@ def removeFloat(film):  # fast scanZ
     return film
 
 class etching(surface_normal):
-    def __init__(self, mirror, inputMethod, pressure_pa, temperature, chamberSize,depoThick, #transport
+    def __init__(self, mirror, inputMethod, depo_or_etching, etchingPoint,depoPoint,density, 
                  center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
                  reaction_type, #reaction 
                  param, N, sub_xy, film, n, cellSize, celllength, kdtreeN,
@@ -155,7 +155,10 @@ class etching(surface_normal):
         self.sub_x = sub_xy[0]
         self.sub_y = sub_xy[1]
         # self.substrate = film
-        self.depoThick = depoThick
+        self.depo_or_etching = depo_or_etching
+        self.depoPoint = depoPoint
+        self.etchingPoint = etchingPoint
+        self.density = density
         self.inputMethod = inputMethod
         self.n = n
         self.N = N
@@ -331,7 +334,10 @@ class etching(surface_normal):
                 j1[indiceYMin] += self.cellSizeY
 
         # delete the particle injected into the film
-                self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
+                self.film[i1,j1,k1,1] += 0.2*dd[:,kdi]/ddsum
+
+            surface_film = np.logical_and(self.film[:, :, :, 1] >= 1, self.film[:, :, :, 1] < 2)
+            self.film[surface_film, 1] = self.density
 
             if np.any(np.where(reactList != -1)[0]):
                 indice_inject[np.where(reactList == -1)[0]] = False
@@ -390,8 +396,6 @@ class etching(surface_normal):
 
         planes = self.get_pointcloud(np.sum(self.film, axis=-1))
         count_etching = 0
-        collList = np.array([])
-        elist = np.array([[0, 0, 0]])
 
         filmThickness = self.substrateTop
 
@@ -425,7 +429,8 @@ class etching(surface_normal):
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 t += tstep
-
+                vzMax = np.max(self.parcel[:,5])
+                vzMin = np.min(self.parcel[:,5])
                 if self.inputMethod == 'bunch':
                     p1 = posGenerator(inputCount, filmThickness, emptyZ)
                     v1 = v0[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
@@ -440,16 +445,22 @@ class etching(surface_normal):
                     pbar.update(1)
                     i += 1
 
-                if np.any(self.film[:, :, self.depoThick, 0]) != 0:
-                    print('depo finish')
-                    break
+                if self.depo_or_etching == 'depo':
+                    if np.any(np.sum(self.film[self.depoPoint, :])) >= 0:
+                        print('depo finish')
+                        break
+                elif self.depo_or_etching == 'etching':
+                    if np.any(np.sum(self.film[self.etchingPoint, :])) <= 0:
+                        print('etch finish')
+                        break                 
+                
                 for thick in range(self.film.shape[2]):
-                    if np.sum(self.film[:, :, thick, 0]) == 0:
+                    if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
                         filmThickness = thick
                         break
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, filmThickness:{},  input_count:{}'\
-                              .format(i, tstep, depo_count, filmThickness, self.parcel.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, planes
@@ -521,7 +532,7 @@ class etching(surface_normal):
             typeID = np.zeros(N)
             # def runEtch(self, v0, typeID, time, emptyZ):
             result =  self.runEtch(velosity_matrix, typeID, tmax, emptyZ=Zgap)
-            if np.any(result[0][:, :, self.depoThick]) != 0:
+            if np.any(result[0][self.depoPoint]) != 0:
                 break             
         del self.log, self.fh
         return result
@@ -534,53 +545,7 @@ class etching(surface_normal):
         del self.log, self.fh 
         return result  
 
-    def depo_position_increase_cosVel(self, randomSeed, N, tmax, weight, Zgap):
-        np.random.seed(randomSeed)
-        Random1 = np.random.rand(N)
-        Random2 = np.random.rand(N)
-        Random3 = np.random.rand(N)
-        velosity_matrix = np.array([self.max_velocity_u(Random1, Random2), \
-                                    self.max_velocity_w(Random1, Random2), \
-                                        self.max_velocity_v(Random3)]).T
-        weights = np.ones(velosity_matrix.shape[0])*weight
-        result =  self.runEtch(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)            
-        del self.log, self.fh
-        return result
-    
-    def rfunc_2(self, x): #Release factor function
-        # print("-------rfunc------")
-        # print(x)
-        y = np.cos(x) ** self.n 
-        return y
 
-    def depo_position_increase_cosVel_NoMaxwell(self, randomSeed, N, tmax, weight, Zgap):
-        np.random.seed(randomSeed)
-        theta_bins_size = 100
-        theta_bins = np.linspace(-np.pi/2, np.pi/2, theta_bins_size)
-        theta_hist_x = theta_bins + np.pi/((theta_bins_size-1)*2)
-        theta_hist_x = theta_hist_x[:-1]
-
-        theta_hist_y = self.rfunc_2(theta_hist_x)
-        theta_hist_y *= 1e5
-        theta_sample = np.array([])
-
-        for i in range(theta_bins.shape[0] - 1):
-            theta_sample = np.concatenate(( theta_sample, np.random.uniform(theta_bins[i], theta_bins[i+1], int(theta_hist_y[i]))))
-        np.random.shuffle(theta_sample)
-        theta_sample = theta_sample[:N]
-
-        self.log.info('theta_sample.shape:{}'.format(theta_sample.shape[0]))
-        phi = np.random.rand(theta_sample.shape[0])*2*np.pi
-        vel_x = np.cos(phi)*np.sin(theta_sample)*1e3
-        vel_y = np.sin(phi)*np.sin(theta_sample)*1e3
-        vel_z = np.cos(theta_sample)*1e3
-        velosity_matrix = np.array([vel_x, vel_y, -vel_z]).T
-        weights = np.ones(velosity_matrix.shape[0])*weight
-        result =  self.runEtch(velosity_matrix, tmax, self.substrate, weights, depoStep=1, emptyZ=Zgap)
-
-        del self.log, self.fh
-        return result
-    
 
 if __name__ == "__main__":
     import pyvista as pv

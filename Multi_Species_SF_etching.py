@@ -19,7 +19,7 @@ from numba import jit
 #react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
 #react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
 
-react_table3 = np.array([[[0.5, 2], [0.5, 3], [0.5, 4], [0.5, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
+react_table3 = np.array([[[0.9, 2], [0.9, 3], [0.9, 4], [0.9, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
                         [[0.5, 5], [0.0, 0], [0.0, 0], [0.0, 0], [0.5, 6], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0]],
                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
 
@@ -77,9 +77,9 @@ def reaction_yield(parcel, film, theta):
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
             # print('chemistry',film[i])
         if reactList[i] == -1:
-            # parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
-            parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
