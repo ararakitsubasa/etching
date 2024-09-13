@@ -48,8 +48,8 @@ from numba import jit
 #react_t g[F, c4f8, ion] s  [Si, C4F8]
 
 react_table = np.array([[[0.200, -1, 0], [0.0  , 0,  0]],
-                        [[0.800,  0, 1], [0.0, 0,  0]],
-                        [[0.9 ,  -1, 0], [0.9  , 0, -1]]])
+                        [[0.800,  -1, 1], [0.0, 0,  0]],
+                        [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -336,8 +336,9 @@ class etching(surface_normal):
         # delete the particle injected into the film
                 self.film[i1,j1,k1,1] += 0.2*dd[:,kdi]/ddsum
 
-            surface_film = np.logical_and(self.film[:, :, :, 1] >= 1, self.film[:, :, :, 1] < 2)
-            self.film[surface_film, 1] = self.density
+            if self.depo_or_etching == 'depo':
+                surface_film = np.logical_and(self.film[:, :, :, 1] >= 1, self.film[:, :, :, 1] < 2)
+                self.film[surface_film, 1] = self.density
 
             if np.any(np.where(reactList != -1)[0]):
                 indice_inject[np.where(reactList == -1)[0]] = False
@@ -444,20 +445,20 @@ class etching(surface_normal):
                     Time.sleep(0.01)
                     pbar.update(1)
                     i += 1
-
-                if self.depo_or_etching == 'depo':
-                    if np.any(np.sum(self.film[self.depoPoint, :])) >= 0:
-                        print('depo finish')
-                        break
-                elif self.depo_or_etching == 'etching':
-                    if np.any(np.sum(self.film[self.etchingPoint, :])) <= 0:
-                        print('etch finish')
-                        break                 
                 
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
                         filmThickness = thick
                         break
+                    
+                if self.depo_or_etching == 'depo':
+                    if self.depoPoint[2] == filmThickness:
+                        print('depo finish')
+                        break
+                elif self.depo_or_etching == 'etching':
+                    if self.etchingPoint[2] == filmThickness:
+                        print('etch finish')
+                        break      
 
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
                               .format(i, tstep, depo_count, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
