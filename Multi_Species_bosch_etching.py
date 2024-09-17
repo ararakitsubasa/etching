@@ -550,42 +550,99 @@ class etching(surface_normal):
 
 if __name__ == "__main__":
     import pyvista as pv
-    import torch
-    film = np.zeros((100, 100, 100, 10))
+    import cProfile
 
-    bottom = 80
-    film[:, :, 0:bottom, 0] = 10 # bottom
 
-    # height = 80
+    film = np.zeros((100, 100, 200, 2))
 
-    # film[:, :40, 0:height, 0] = 10
-    # film[:, 60:, 0:height, 0] = 10
+    bottom = 100
+    height = 140
+
+    density = 10
+
+    sphere = np.ones((100, 100, 200), dtype=bool)
+
+    radius = 30
+
+    center = 50
+    for i in range(sphere.shape[0]):
+        for j in range(sphere.shape[1]):
+            if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
+                sphere[i, j, bottom:height] = 0
+
+    film[sphere, 1] = density
+    film[:, :, height:, :] = 0
+    film[:, :, 0:bottom, 0] = density # bottom
+    film[:, :, 0:bottom, 1] = 0 # bottom
+
     etchfilm = film
 
+    def max_velocity_u( random1, random2):
+        return np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))
 
-    N = int(1e6)
+    def max_velocity_w( random1, random2):
+        return np.sqrt(-np.log(random1))*(np.sin(2*np.pi*random2))
+
+    def max_velocity_v( random3):
+        return -np.sqrt(-np.log(random3))
+    
+    N = int(5e7)
     velosity_matrix = np.zeros((N, 3))
-    tstep=1e-5
-    celllength=1e-5
+    # tstep=1e-5
+    # celllength=1e-5
     # velosity_matrix[:, 0] = -1 * celllength /tstep
     # velosity_matrix[:, 1] = -1 * celllength /tstep
-    velosity_matrix[:, 2] = -1 * celllength /tstep
+    Random1 = np.random.rand(N)
+    Random2 = np.random.rand(N)
+    Random3 = np.random.rand(N)
+    velosity_matrix = np.array([max_velocity_u(Random1, Random2), \
+                                max_velocity_w(Random1, Random2), \
+                                    max_velocity_v(Random3)]).T
+
+    energy = np.linalg.norm(velosity_matrix, axis=1)
+    velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+    velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+    velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
+
+    # velosity_matrix[:, 2] = -1 * celllength /tstep
 
     typeID = np.zeros(N)
+    # FO_ratio = int(N/4)
+    # typeID[-FO_ratio:] = 1
 
-    print(velosity_matrix[0])
+    # add Ar+
+    # ion_ration = int(N/4)
+    # typeID[-ion_ration:] = 2
+    # velosity_matrix[-ion_ration:, 0] = np.random.rand(ion_ration)*0.01 - 0.005
+    # velosity_matrix[-ion_ration:, 1] = np.random.rand(ion_ration)*0.01 - 0.005
+    # velosity_matrix[-ion_ration:, 2] = -1 
+    # add Ar+
+
+
+    vel_type_shuffle = np.zeros((N, 4))
+    vel_type_shuffle[:, :3] = velosity_matrix
+    vel_type_shuffle[:, -1] = typeID
+
+    np.random.shuffle(vel_type_shuffle)
+    # print(typeID[:10])
+    # print(velosity_matrix[0])
+    # print(vel_type_shuffle[:10])
+
+    # print(velosity_matrix[0])
 
     logname = 'Multi_species_benchmark_0729'
-    testEtch = etching(mirror=True,inputMethod='bunch', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
-                        depoThick=90, center_with_direction=np.array([[35,100,75]]), 
-                        range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
-                        reaction_type=False, param = [1.6, -0.7], N = 300000, 
-                        sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
-                        celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                        substrateTop=40,posGeneratorType='benchmark', logname=logname)
+    testEtch = etching(mirror=True,inputMethod='bunch', depo_or_etching='etching', 
+                                etchingPoint = np.array([center, center, 37]),depoPoint = np.array([center, center, 37]),
+                                density=density, center_with_direction=np.array([[35,100,75]]), 
+                                range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
+                                reaction_type=False, param = [1.6, -0.7], N = N, 
+                                sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
+                                celllength=1e-5, kdtreeN=5, tstep=1e-5,
+                                substrateTop=80,posGeneratorType='top', logname=logname)
 
+    cProfile.run('etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)', 'restats')
 
-    etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
+    # etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
 
     sumFilm = np.sum(etching1[0], axis=-1)
 
