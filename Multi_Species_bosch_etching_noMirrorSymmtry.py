@@ -43,13 +43,17 @@ from numba import jit
 #             react_table[i, j, react_chem] = react_plus_min
 
 
-#solid = film[i, j, k, 2][Si, C4F8]
-#react_t g[F, c4f8, ion] s  [1,    2 ]
-#react_t g[F, c4f8, ion] s  [Si, C4F8]
+#solid = film[i, j, k, 2][Si, C4F8, mask]
+#react_t g[F, c4f8, ion] s  [1,    2 , 3]
+#react_t g[F, c4f8, ion] s  [Si, C4F8, mask]
 
-react_table = np.array([[[0.200, -1, 0], [0.0  , 0,  0]],
-                        [[0.800,  -1, 1], [0.0, 0,  0]],
-                        [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
+# react_table = np.array([[[0.200, -1, 0], [0.0  , 0,  0]],
+#                         [[0.800,  -1, 1], [0.0, 0,  0]],
+#                         [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
+
+react_table = np.array([[[0.200, -1, 0, 0], [0.0, 0, 0, 0], [0.0, 0, 0, 0]],
+                        [[0.800, -1, 1, 0], [0.0, 0, 0, 0], [0.0, 0, 0, 0]],
+                        [[0.100, -1, 0, 0], [0.9, 0,-1, 0], [0.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -194,26 +198,26 @@ class etching(surface_normal):
     def boundary(self):
 
         # if self.symmetry == True:
-        #     indiceXMax = self.parcel[:, 6] >= self.cellSizeX
-        #     indiceXMin = self.parcel[:, 6] < 0
+        indiceXMax = self.parcel[:, 6] >= self.cellSizeX
+        indiceXMin = self.parcel[:, 6] < 0
 
-        #     # 使用布尔索引进行调整
-        #     self.parcel[indiceXMax, 6] -= self.cellSizeX
-        #     self.parcel[indiceXMax, 0] -= self.celllength * self.cellSizeX
+        # 使用布尔索引进行调整
+        self.parcel[indiceXMax, 6] -= self.cellSizeX
+        self.parcel[indiceXMax, 0] -= self.celllength * self.cellSizeX
 
-        #     self.parcel[indiceXMin, 6] += self.cellSizeX
-        #     self.parcel[indiceXMin, 0] += self.celllength * self.cellSizeX
+        self.parcel[indiceXMin, 6] += self.cellSizeX
+        self.parcel[indiceXMin, 0] += self.celllength * self.cellSizeX
 
-        #     # 检查并调整 j_cp 和对应的 pos_cp
-        #     indiceYMax = self.parcel[:, 7] >= self.cellSizeY
-        #     indiceYMin = self.parcel[:, 7] < 0
+        # 检查并调整 j_cp 和对应的 pos_cp
+        indiceYMax = self.parcel[:, 7] >= self.cellSizeY
+        indiceYMin = self.parcel[:, 7] < 0
 
-        #     # 使用布尔索引进行调整
-        #     self.parcel[indiceYMax, 7] -= self.cellSizeY
-        #     self.parcel[indiceYMax, 1] -= self.celllength * self.cellSizeY
+        # 使用布尔索引进行调整
+        self.parcel[indiceYMax, 7] -= self.cellSizeY
+        self.parcel[indiceYMax, 1] -= self.celllength * self.cellSizeY
 
-        #     self.parcel[indiceYMin, 7] += self.cellSizeY
-        #     self.parcel[indiceYMin, 1] += self.celllength * self.cellSizeY
+        self.parcel[indiceYMin, 7] += self.cellSizeY
+        self.parcel[indiceYMin, 1] += self.celllength * self.cellSizeY
         
         indices = np.logical_or(self.parcel[:, 6] >= self.cellSizeX, self.parcel[:, 6] < 0)
         indices |= np.logical_or(self.parcel[:, 7] >= self.cellSizeY, self.parcel[:, 7] < 0)
@@ -408,7 +412,7 @@ class etching(surface_normal):
 
         planes = self.get_pointcloud(np.sum(self.film, axis=-1))
         count_reaction = 0
-
+        inputAll = 0
         filmThickness = self.substrateTop
 
         if self.posGeneratorType == 'full':
@@ -440,10 +444,11 @@ class etching(surface_normal):
 
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
-            while count_reaction < max_react_count:
+            while inputAll < max_react_count:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
+                inputAll += inputCount
                 # if count_reaction > self.max_react_count:
                 #     break
                 t += tstep
@@ -458,11 +463,11 @@ class etching(surface_normal):
 
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
-                if int(count_reaction/max_react_count*100) > i:
+                if int(inputAll/max_react_count*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
-                    self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
-                                .format(i, tstep, depo_count, count_reaction, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
+                    self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                                .format(i, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
                     i += 1
                 
                 for thick in range(self.film.shape[2]):

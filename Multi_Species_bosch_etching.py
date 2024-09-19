@@ -429,6 +429,7 @@ class etching(surface_normal):
             while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
+                count_etching += depo_count
                 t += tstep
                 vzMax = np.max(self.parcel[:,5])
                 vzMin = np.min(self.parcel[:,5])
@@ -460,8 +461,8 @@ class etching(surface_normal):
                         print('etch finish')
                         break      
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
-                              .format(i, tstep, depo_count, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
+                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, count_etching:{}, vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                              .format(i, tstep, depo_count, count_etching, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, planes
