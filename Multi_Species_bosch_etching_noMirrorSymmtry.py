@@ -4,10 +4,10 @@ from scipy.spatial import KDTree
 import time as Time
 from tqdm import tqdm, trange
 import logging
-from Collision import transport
+# from Collision import transport
 from surface_normalize_sf import surface_normal
 from numba import jit
-
+import torch
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
@@ -361,25 +361,24 @@ class etching(surface_normal):
         # print(pos_cp)
         depo_count = self.etching_film(planes)
 
-        self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
-        i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
-        j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
-        k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
-        self.parcel[:, 6] = i
-        self.parcel[:, 7] = j
-        self.parcel[:, 8] = k
+        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
+        # i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
+        # j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
+        # k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
+        # self.parcel[:, 6] = i
+        # self.parcel[:, 7] = j
+        # self.parcel[:, 8] = k
 
-        # 预计算 1/self.celllength，避免重复计算
-        # inv_celllength = 1.0 / self.celllength
+        parcel_tensor = torch.tensor(self.parcel, device='cuda')  # 将数据转换为PyTorch张量
+        celllength_tensor = torch.tensor(self.celllength, device='cuda')
 
-        # 更新位置
-        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
+        parcel_tensor[:, :3] += parcel_tensor[:, 3:6] * tStep
 
-        # # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
-        # ijk = np.rint((self.parcel[:, :3]/ self.celllength) + 0.5).astype(int)
+        parcel_div_celllength = (parcel_tensor[:, :3] / celllength_tensor) + 0.5
+        ijk = torch.floor(parcel_div_celllength).to(torch.int32)
 
-        # # 一次性赋值给 parcel 的第 6、7、8 列
-        # self.parcel[:, 6:9] = ijk
+        parcel_tensor[:, 6:9] = ijk
+        self.parcel = parcel_tensor.cpu().numpy()
 
         return depo_count #, film_max, surface_true
 
@@ -488,7 +487,7 @@ class etching(surface_normal):
                 #               .format(i, tstep, depo_count, count_reaction, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
-        return self.film, planes
+        return self.film, filmThickness
     
     def posGenerator(self, IN, thickness, emptyZ):
         position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
