@@ -6,7 +6,7 @@ from tqdm import tqdm, trange
 import logging
 # from Collision import transport
 from surface_normalize_sf import surface_normal
-from numba import jit
+from numba import jit, prange
 import torch
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[Cu] s  [1,         2]
@@ -57,7 +57,58 @@ react_table = np.array([[[0.200, -1, 0, 0], [0.0, 0, 0, 0], [0.0, 0, 0, 0]],
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
-@jit(nopython=True)
+
+# @jit(nopython=True, parallel=True)
+# def reaction_yield(parcel, film, theta):
+#     num_parcels = parcel.shape[0]
+#     num_reactions = react_table.shape[1]
+
+#     choice = np.random.rand(num_parcels, num_reactions)
+#     reactList = np.ones(num_parcels) * -1
+#     depo_parcel = np.zeros(num_parcels)
+
+#     # 矢量化筛选：设置film <= 0的元素的choice为1
+#     choice[film <= 0] = 1
+
+#     # 并行处理parcel的外循环
+#     for i in prange(num_parcels):  # 使用prange来并行化外循环
+#         react_rates = react_table[int(parcel[i, -1]), :, 0]
+
+#         # 矢量化处理 acceptList，获取可接受的反应
+#         acceptList = react_rates > choice[i, :]
+
+#         # 获取可以反应的下标
+#         react_choice_indices = np.where(acceptList)[0]
+
+#         # 如果有可以反应的反应，随机选择一个
+#         if react_choice_indices.size > 0:
+#             react_choice = np.random.choice(react_choice_indices)
+#             reactList[i] = react_choice
+
+#             # 判断是否有沉积或蚀刻反应
+#             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
+#                 depo_parcel[i] = 1  # 沉积
+#             else:
+#                 depo_parcel[i] = -1  # 蚀刻
+
+#     # 矢量化处理 film 和 parcel
+#     deposit_mask = depo_parcel == -1
+#     film[deposit_mask] += react_table[parcel[deposit_mask, -1].astype(int), reactList[deposit_mask].astype(int), 1:]
+
+#     # 处理反射
+#     reflect_mask = reactList == -1
+#     parcel[reflect_mask, 3:6] = SpecularReflect(parcel[reflect_mask, 3:6], theta[reflect_mask])
+
+#     return film, parcel, reactList, depo_parcel
+
+# @jit(nopython=True)
+# def SpecularReflect(vel, normal):
+#     # 矢量化反射计算
+#     return vel - 2 * np.einsum('ij,ij->i', vel, normal)[:, np.newaxis] * normal
+
+
+
+@jit(nopython=True, parallel=True)
 def reaction_yield(parcel, film, theta):
     # print('react parcel', parcel.shape)
     # print('react film', film.shape)
@@ -71,9 +122,9 @@ def reaction_yield(parcel, film, theta):
             if film[i, j] <= 0:
                 choice[i, j] = 1
     depo_parcel = np.zeros(parcel.shape[0])
-    for i in range(parcel.shape[0]):
+    for i in prange(parcel.shape[0]):
         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
-        for j in range(film.shape[1]):
+        for j in prange(film.shape[1]):
             react_rate = react_table[int(parcel[i, -1]), j, 0]
             if react_rate > choice[i, j]:
                 acceptList[j] = True
@@ -86,7 +137,7 @@ def reaction_yield(parcel, film, theta):
                 depo_parcel[i] = 1
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) <= 0:
                 depo_parcel[i] = -1
-    for i in range(parcel.shape[0]):
+    for i in prange(parcel.shape[0]):
         if depo_parcel[i] == -1:
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
             # print('chemistry',film[i])
@@ -369,6 +420,19 @@ class etching(surface_normal):
         # self.parcel[:, 7] = j
         # self.parcel[:, 8] = k
 
+        # # 预计算 1/self.celllength，避免重复计算
+        # inv_celllength = 1.0 / self.celllength
+
+        # # 更新位置
+        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
+
+        # # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
+        # ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
+
+        # # 一次性赋值给 parcel 的第 6、7、8 列
+        # self.parcel[:, 6:9] = ijk
+
+        # cuda
         parcel_tensor = torch.tensor(self.parcel, device='cuda')  # 将数据转换为PyTorch张量
         celllength_tensor = torch.tensor(self.celllength, device='cuda')
 
