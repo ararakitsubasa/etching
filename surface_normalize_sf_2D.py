@@ -25,10 +25,10 @@ class surface_normal:
     
     def scanZ(self, film): # fast scanZ
         film = torch.Tensor(film)
-        xshape, yshape, zshape = film.shape
+        xshape, yshape = film.shape
         
         # 初始化一个全零的表面稀疏张量
-        surface_sparse = torch.zeros((xshape, yshape, zshape))
+        surface_sparse = torch.zeros((xshape, yshape))
         
         # 获取当前平面与前后平面的布尔索引
         current_plane = film != 0
@@ -36,12 +36,12 @@ class surface_normal:
         # 获取周围邻居的布尔索引
         neighbors = torch.zeros_like(film, dtype=torch.bool)
         
-        neighbors[1:, :, :] |= film[:-1, :, :] == 0  # 上面
-        neighbors[:-1, :, :] |= film[1:, :, :] == 0  # 下面
-        neighbors[:, 1:, :] |= film[:, :-1, :] == 0  # 左边
-        neighbors[:, :-1, :] |= film[:, 1:, :] == 0  # 右边
-        neighbors[:, :, 1:] |= film[:, :, :-1] == 0  # 前面
-        neighbors[:, :, :-1] |= film[:, :, 1:] == 0  # 后面
+        neighbors[1:, :] |= film[:-1, :] == 0  # 上面
+        neighbors[:-1, :] |= film[1:, :] == 0  # 下面
+        neighbors[:, 1:] |= film[:, :-1] == 0  # 左边
+        neighbors[:, :-1] |= film[:, 1:] == 0  # 右边
+        # neighbors[:, :, 1:] |= film[:, :, :-1] == 0  # 前面
+        # neighbors[:, :, :-1] |= film[:, :, 1:] == 0  # 后面
         
         # 获取满足条件的索引
         condition = current_plane & neighbors
@@ -51,7 +51,7 @@ class surface_normal:
         
         return surface_sparse.to_sparse()
         
-    def normalconsistency_3D_real(self, planes):
+    def normalconsistency_2D_real(self, planes):
         """
         This function checks whether the normals are oriented towards the outside of the surface, i.e., it 
         checks the consistency of the normals. The function changes the direction of the normals that do not 
@@ -117,9 +117,9 @@ class surface_normal:
         knn_pts = pointsNP[ii]
         xmn = np.mean(knn_pts[:, :, 0], axis=1)
         ymn = np.mean(knn_pts[:, :, 1], axis=1)
-        zmn = np.mean(knn_pts[:, :, 2], axis=1)
+        # zmn = np.mean(knn_pts[:, :, 2], axis=1)
 
-        c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
+        c = knn_pts - np.stack([xmn, ymn], axis=1)[:, np.newaxis, :]
 
         # 计算协方差矩阵
         cov = np.einsum('...ij,...ik->...jk', c, c)
@@ -131,18 +131,22 @@ class surface_normal:
         minevindex = np.argmin(s, axis=1)
         normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
 
+        # 使矢量向上
+        downVector = normal_all[:, 1] < 0
+        normal_all[downVector, 0] *= -1
+        normal_all[downVector, 1] *= -1
         # 生成平面矩阵
         planes = np.hstack((normal_all, pointsNP))
 
         # 调用 normalconsistency_3D_real 方法
-        planes_consist = self.normalconsistency_3D_real(planes)
+        # planes_consist = self.normalconsistency_2D_real(planes)
 
-        return planes_consist
+        return planes
 
     def get_inject_normal(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
-        plane_point = plane[:, 3:6]
-        normal = plane[:, :3]
+        plane_point = plane[:, 2:4]
+        normal = plane[:, :2]
         velocity_normal = np.linalg.norm(vel, axis=1)
         velocity = np.divide(vel.T, velocity_normal).T
         plane_tree = KDTree(plane_point*self.celllength)
