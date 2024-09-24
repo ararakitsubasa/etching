@@ -53,7 +53,7 @@ import torch
 
 react_table = np.array([[[0.200, -1, 0, 0], [0.0, 0, 0, 0], [0.0, 0, 0, 0]],
                         [[0.800, -1, 1, 0], [0.0, 0, 0, 0], [0.0, 0, 0, 0]],
-                        [[0.100, -1, 0, 0], [0.9, 0,-1, 0], [0.0, 0, 0, 0]]])
+                        [[0.950, -1, 0, 0], [0.95, 0,-1, 0], [0.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -176,12 +176,10 @@ def removeFloat(film):  # fast scanZ
     neighbors = np.zeros_like(film, dtype=bool)
 
     # 检查各个方向的邻居是否为零
-    neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面的邻居不为0
-    neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面的邻居不为0
-    neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边的邻居不为0
-    neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边的邻居不为0
-    neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面的邻居不为0
-    neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面的邻居不为0
+    neighbors[1:, :] |= film[:-1, :] != 0  # 上面的邻居不为0
+    neighbors[:-1, :] |= film[1:, :] != 0  # 下面的邻居不为0
+    neighbors[:, 1:] |= film[:, :-1] != 0  # 左边的邻居不为0
+    neighbors[:, :-1] |= film[:, 1:] != 0  # 右边的邻居不为0
 
     # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
     condition = current_plane & ~neighbors
@@ -295,8 +293,6 @@ class etching(surface_normal):
         j = self.parcel[:, 5].astype(int)
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j] >= 1) 
-
-        # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :2]
         vel_1 = self.parcel[indice_inject, 2:4]
@@ -402,8 +398,8 @@ class etching(surface_normal):
         i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
         j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
         # k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
-        self.parcel[:, 5] = i
-        self.parcel[:, 6] = j
+        self.parcel[:, 4] = i
+        self.parcel[:, 5] = j
         # self.parcel[:, 8] = k
 
         # # 预计算 1/self.celllength，避免重复计算
@@ -448,11 +444,11 @@ class etching(surface_normal):
         self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
-    def runEtch(self, velGeneratorType, typeID, inputCount,max_react_count, emptyZ):
+    def runEtch(self, velGeneratorType, typeID, inputCount,max_react_count, time, emptyZ):
 
         self.log.info('inputType:{}'.format(typeID))
         self.parcel = np.zeros((1, 7))
-        # tmax = time
+        tmax = time
 
         tstep = self.timeStep
         t = 0
@@ -492,7 +488,8 @@ class etching(surface_normal):
 
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
-            while inputAll < max_react_count:
+            # while inputAll < max_react_count:
+            while t < tmax:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
@@ -511,7 +508,7 @@ class etching(surface_normal):
 
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
-                if int(inputAll/max_react_count*100) > i:
+                if int(t/tmax*100) > i:
                     Time.sleep(0.01)
                     pbar.update(1)
                     self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
@@ -629,9 +626,9 @@ class etching(surface_normal):
         return result
     
         # def runEtch(self, velGeneratorType, typeID, inputCount, emptyZ):
-    def inputParticle(self, velGeneratorType, typeID, inputCount, max_react_count, Zgap):
+    def inputParticle(self, velGeneratorType, typeID, inputCount, max_react_count, tmax, Zgap):
 
-        result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, emptyZ=Zgap)
+        result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count,tmax, emptyZ=Zgap)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
         #     break             
         # del self.log, self.fh 
@@ -644,27 +641,18 @@ if __name__ == "__main__":
     import cProfile
 
 
-    film = np.zeros((100, 100, 200, 2))
+    film = np.zeros((100, 200, 3))
 
     bottom = 100
     height = 140
 
     density = 10
 
-    sphere = np.ones((100, 100, 200), dtype=bool)
-
-    radius = 30
-
     center = 50
-    for i in range(sphere.shape[0]):
-        for j in range(sphere.shape[1]):
-            if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
-                sphere[i, j, bottom:height] = 0
 
-    film[sphere, 1] = density
-    film[:, :, height:, :] = 0
-    film[:, :, 0:bottom, 0] = density # bottom
-    film[:, :, 0:bottom, 1] = 0 # bottom
+    film[:, 0:bottom, 0] = density # bottom
+    film[:20, bottom:height, 2] = density # bottom
+    film[-20:, bottom:height, 2] = density # bottom
 
     etchfilm = film
 
@@ -674,7 +662,7 @@ if __name__ == "__main__":
 
     # print(velosity_matrix[0])
 
-    logname = 'Multi_species_benchmark_0917'
+    logname = 'Multi_species_benchmark_0924'
     testEtch = etching(inputMethod='bunch', depo_or_etching='etching', 
                     etchingPoint = np.array([center, center, 37]),depoPoint = np.array([center, center, 37]),
                     density=density, center_with_direction=np.array([[35,100,75]]), 
@@ -682,54 +670,32 @@ if __name__ == "__main__":
                     reaction_type=False, param = [1.6, -0.7],
                     sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
                     celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                    substrateTop=80,posGeneratorType='top', logname=logname)
+                    substrateTop=bottom,posGeneratorType='top', logname=logname)
     
-    #                                               (velGeneratorType, typeID, inputCount, emptyZ=Zgap)
-    maxwell = 'maxwell'
-    cProfile.run('etching1 = testEtch.inputParticle(maxwell, 0, int(1e5),int(1e7), 10)', 'noMirror_cprofile')
 
-    # etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
+    step1 = testEtch.inputParticle('maxwell', 0, int(1e2),int(1e5), 10)
 
-    # sumFilm = np.sum(etching1[0], axis=-1)
+    film3D = np.zeros((1, 100, 200, 3))
+    film3D[0] = etchfilm
 
-    # # depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
-    # # depo1 = depo1.indices().numpy().T
+    depo1 = torch.Tensor(film3D[:, :,:, 0]!=0).to_sparse()
+    depo1 = depo1.indices().numpy().T
 
-    # # substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
-    # # substrute = substrute.indices().numpy().T
-    # # depomesh = pv.PolyData(depo1)
-    # # depomesh["radius"] = np.ones(depo1.shape[0])*0.5
-    # # geom = pv.Box()
+    substrute = torch.Tensor(film3D[:,:, :, 1]!=0).to_sparse()
+    substrute = substrute.indices().numpy().T
+    depomesh = pv.PolyData(depo1)
+    depomesh["radius"] = np.ones(depo1.shape[0])*0.5
+    geom = pv.Box()
 
-    # # submesh = pv.PolyData(substrute)
-    # # submesh["radius"] = np.ones(substrute.shape[0])*0.5
+    submesh = pv.PolyData(substrute)
+    submesh["radius"] = np.ones(substrute.shape[0])*0.5
 
-    # # # Progress bar is a new feature on master branch
-    # # depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-    # # subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    # Progress bar is a new feature on master branch
+    depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
+    subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
 
-    # # p = pv.Plotter()
-    # # # p.add_mesh(depoglyphed, color='cyan')
-    # # p.add_mesh(subglyphed, color='dimgray')
-    # # p.enable_eye_dome_lighting()
-    # # p.show()
-
-
-    # point_cloud = pv.PolyData(etching1[1][:, 3:])
-    # vectors = etching1[1][:, :3]
-
-    # point_cloud['vectors'] = vectors
-    # arrows = point_cloud.glyph(
-    #     orient='vectors',
-    #     scale=1000,
-    #     factor=2,
-    # )
-
-    # # Display the arrows
-    # plotter = pv.Plotter()
-    # plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
-    # # plotter.add_mesh(arrows, color='lightblue')
-    # # plotter.add_point_labels([point_cloud.center,], ['Center',],
-    # #                          point_color='yellow', point_size=20)
-    # plotter.show_grid()
-    # plotter.show()
+    p = pv.Plotter()
+    p.add_mesh(depoglyphed, color='cyan')
+    p.add_mesh(subglyphed, color='dimgray')
+    p.enable_eye_dome_lighting()
+    p.show()

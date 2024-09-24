@@ -109,7 +109,7 @@ class surface_normal:
         test = self.scanZ(film)
         points = test.indices().T
         surface_tree = KDTree(points)
-        dd, ii = surface_tree.query(points, k=18, workers=5)
+        dd, ii = surface_tree.query(points, k=5, workers=1)
 
         pointsNP = points.numpy()
 
@@ -176,3 +176,48 @@ class surface_normal:
         etch_yield = self.yield_func(theta)
         return etch_yield
 
+if __name__ == "__main__":
+    import pyvista as pv
+
+    film = np.zeros((100, 200, 3))
+
+    bottom = 100
+    height = 140
+
+    density = 10
+
+    center = 50
+
+    film[:, 0:bottom, 0] = density # bottom
+    film[:20, bottom:height, 2] = density # bottom
+    film[-20:, bottom:height, 2] = density # bottom
+
+    testSurface = surface_normal(center_with_direction=np.array([[35,100,75]]), 
+                range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1],celllength=1e-5, yield_hist=np.array([None]))
+    
+    planes = testSurface.get_pointcloud(np.sum(film, axis=-1))
+
+    planes3D = np.zeros(([planes.shape[0], 3]))
+    planes3D[:, :2] = planes[:, 2:]
+    print(planes3D.shape)
+    point_cloud = pv.PolyData(planes3D)
+
+    vectors3D = np.zeros(([planes.shape[0], 3]))
+    vectors3D[:, :2] = planes[:, :2]
+
+
+    point_cloud['vectors'] = vectors3D
+    arrows = point_cloud.glyph(
+        orient='vectors',
+        scale=1000,
+        factor=2,
+    )
+
+    # Display the arrows
+    plotter = pv.Plotter()
+    plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
+    plotter.add_mesh(arrows, color='lightblue')
+    # plotter.add_point_labels([point_cloud.center,], ['Center',],
+    #                          point_color='yellow', point_size=20)
+    plotter.show_grid()
+    plotter.show()
