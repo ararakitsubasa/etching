@@ -12,7 +12,7 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
+react_table = np.array([[[0.200, 0, 1], [0.200, 0, 1]],
                         [[0.800, -1, 0], [0.075, 0, -1]]])
 
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
@@ -334,6 +334,7 @@ class etching(surface_normal):
                 # indiceYMin = j1 < 0
                 # j1[indiceYMax] -= self.cellSizeY
                 # j1[indiceYMin] += self.cellSizeY
+                self.film[i1,j1,k1,1] += 0.2*dd[:,kdi]/ddsum
 
                 self.film[i1,j1,k1,:] = depo_on_surface(self.parcel, self.film[i1,j1,k1,:], reactList, to_depo)
 

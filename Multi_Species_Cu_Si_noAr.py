@@ -12,7 +12,7 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.700, 0, 1], [0.300, 0, 1]],
+react_table = np.array([[[0.200, 0, 1], [0.200, 0, 1]],
                         [[0.200, -1, 0], [0.075, 0, -1]]])
 
 # etching act on film, depo need output
