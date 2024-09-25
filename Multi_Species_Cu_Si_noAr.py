@@ -12,7 +12,7 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.200, 0, 1], [0.200, 0, 1]],
+react_table = np.array([[[0.100, 0, 1], [0.100, 0, 1]],
                         [[0.200, -1, 0], [0.075, 0, -1]]])
 
 # etching act on film, depo need output
@@ -48,8 +48,8 @@ def reaction_yield(parcel, film, theta):
         if depo_parcel[i] == -1:
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
         if reactList[i] == -1:
-            # parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
-            parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
@@ -348,6 +348,8 @@ class etching(surface_normal):
                     if np.sum(self.film[:, :, thick, :]) == 0:
                         filmThickness = thick
                         break
+                if filmThickness%10 == 0 and filmThickness>45:
+                    np.save('./ID242/cvd_void_subDepo_thk{}'.format(filmThickness), self.film)
 
                 self.log.info('runStep:{}, timeStep:{}, depo_count:{}, vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
                               .format(i, tstep, depo_count, vzMax, vzMin, filmThickness, self.parcel.shape[0]))
@@ -393,7 +395,7 @@ class etching(surface_normal):
         # def runEtch(self, v0, typeID, time, emptyZ):
     def depo_position_increase_cosVel_normal(self, randomSeed, N, tmax, Zgap):
         np.random.seed(randomSeed)
-        for i in range(1):
+        for i in range(9):
             Random1 = np.random.rand(N)
             Random2 = np.random.rand(N)
             Random3 = np.random.rand(N)
