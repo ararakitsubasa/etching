@@ -12,8 +12,22 @@ from numba import jit
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
 
-react_table = np.array([[[0.100, 0, 1], [0.100, 0, 1]],
-                        [[0.200, -1, 0], [0.075, 0, -1]]])
+# react_table = np.array([[[0.100, 0, 1], [0.100, 0, 1]],
+#                         [[0.200, -1, 0], [0.075, 0, -1]]])
+
+
+#solid = film[i, j, k, 2][Si, C4F8, mask]
+#react_t g[F, c4f8, ion] s  [1,    2 , 3]
+#react_t g[F, c4f8, ion] s  [Si, C4F8, mask]
+
+# react_table = np.array([[[0.200, -1, 0], [0.0  , 0,  0]],
+#                         [[0.800,  -1, 1], [0.0, 0,  0]],
+#                         [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
+
+react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[1.0,  0, 0, 0], [1.0, 0, -1, 0], [0.0, 0, 0, 0]]])
+
 
 # etching act on film, depo need output
 @jit(nopython=True)
@@ -27,7 +41,7 @@ def reaction_yield(parcel, film, theta):
     reactList = np.ones(parcel.shape[0])*-1
     for i in range(num_parcels):
         for j in range(num_reactions):
-            if film[i, j] <= 0:
+            if film[i, j] >= 0:
                 choice[i, j] = 1
     depo_parcel = np.zeros(parcel.shape[0])
     for i in range(parcel.shape[0]):
@@ -43,10 +57,11 @@ def reaction_yield(parcel, film, theta):
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
                 depo_parcel[i] = 1
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) < 0:
+                # print('etching')
                 depo_parcel[i] = -1
     for i in range(parcel.shape[0]):
-        if depo_parcel[i] == -1:
-            film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+        # if depo_parcel[i] == -1:
+        #     film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
         if reactList[i] == -1:
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
@@ -166,8 +181,8 @@ class etching(surface_normal):
         j = self.parcel[:, 7].astype(int)
         k = self.parcel[:, 8].astype(int)
         sumFilm = np.sum(self.film, axis=-1)
-        indice_inject = np.array(sumFilm[i, j, k] >= 1) 
-
+        indice_inject = np.array(sumFilm[i, j, k] != 0) 
+        # indice_inject = np.logical_and(film[i, j, k] < 0, film[i, j, k] > -90)
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
@@ -190,7 +205,8 @@ class etching(surface_normal):
         # reflect_parcel = SpecularReflect(vel_1[reflect_choice], get_theta[reflect_choice])
 
         # define depo area 
-            surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
+            surface_depo = np.array(self.film[:,:,:, 0] < 0) 
+            # surface_depo = np.logical_and(film < 0, film > -90) #etching
 
             # mirror
             self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
@@ -206,7 +222,9 @@ class etching(surface_normal):
 
             surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
 
-            to_depo = np.where(depo_parcel > 0)[0]
+            to_depo = np.where(depo_parcel < 0)[0]
+            depoInSi = np.sum(depo_parcel < 0)
+            # print(np.sum(depo_parcel))
             pos_1[:, 0] += 10*self.celllength
             pos_1[:, 1] += 10*self.celllength
 
@@ -235,7 +253,7 @@ class etching(surface_normal):
                 j1[indiceYMin] += self.cellSizeY
 
         # delete the particle injected into the film
-                self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
+                self.film[i1,j1,k1,0] -= 0.2*dd[:,kdi]/ddsum
 
             if np.any(np.where(reactList != -1)[0]):
                 indice_inject[np.where(reactList == -1)[0]] = False
@@ -243,7 +261,9 @@ class etching(surface_normal):
         # delete the particle injected into the film
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
-
+            surface_film = np.logical_and(self.film[:,:,:,0] > -12, self.film[:,:,:,0] < -11)
+            # film[surface_film] = int(100*depoStep)
+            self.film[surface_film, 0] = 0
             return pos_1.shape[0] #, film_max, np.sum(surface_film)
         else:
             return 0
@@ -341,11 +361,12 @@ class etching(surface_normal):
                     pbar.update(1)
                     i += 1
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
-                if np.any(np.sum(self.film[:, :, self.depoThick, :])) != 0:
+                if np.any(np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), self.depoThick, :])) == 0:
                     print('depo finish')
                     break
+
                 for thick in range(self.film.shape[2]):
-                    if np.sum(self.film[:, :, thick, :]) == 0:
+                    if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
                         filmThickness = thick
                         break
                 if filmThickness%10 == 0 and filmThickness>45:
