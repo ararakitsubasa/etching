@@ -2,7 +2,7 @@ import numpy as np
 # import cupy as cp
 from scipy.spatial import KDTree
 import time as Time
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import logging
 # from Collision import transport
 from surface_normalize_sf import surface_normal
@@ -34,8 +34,8 @@ import torch
 #                         [[0.800,  -1, 1], [0.0, 0,  0]],
 #                         [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
 
-react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[0.8, -0.1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [0.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
@@ -314,7 +314,7 @@ class etching(surface_normal):
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
 
-            return pos_1.shape[0] #, film_max, np.sum(surface_film)
+            return np.sum(depo_parcel != 0) #, film_max, np.sum(surface_film)
         else:
             return 0
 
@@ -334,29 +334,29 @@ class etching(surface_normal):
         # self.parcel[:, 7] = j
         # self.parcel[:, 8] = k
 
-        # # 预计算 1/self.celllength，避免重复计算
-        # inv_celllength = 1.0 / self.celllength
+        # 预计算 1/self.celllength，避免重复计算
+        inv_celllength = 1.0 / self.celllength
 
-        # # 更新位置
-        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
+        # 更新位置
+        self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
 
-        # # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
-        # ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
+        # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
+        ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
 
-        # # 一次性赋值给 parcel 的第 6、7、8 列
-        # self.parcel[:, 6:9] = ijk
+        # 一次性赋值给 parcel 的第 6、7、8 列
+        self.parcel[:, 6:9] = ijk
 
         # cuda
-        parcel_tensor = torch.tensor(self.parcel, device='cuda')  # 将数据转换为PyTorch张量
-        celllength_tensor = torch.tensor(self.celllength, device='cuda')
+        # parcel_tensor = torch.tensor(self.parcel, device='cuda')  # 将数据转换为PyTorch张量
+        # celllength_tensor = torch.tensor(self.celllength, device='cuda')
 
-        parcel_tensor[:, :3] += parcel_tensor[:, 3:6] * tStep
+        # parcel_tensor[:, :3] += parcel_tensor[:, 3:6] * tStep
 
-        parcel_div_celllength = (parcel_tensor[:, :3] / celllength_tensor) + 0.5
-        ijk = torch.floor(parcel_div_celllength).to(torch.int32)
+        # parcel_div_celllength = (parcel_tensor[:, :3] / celllength_tensor) + 0.5
+        # ijk = torch.floor(parcel_div_celllength).to(torch.int32)
 
-        parcel_tensor[:, 6:9] = ijk
-        self.parcel = parcel_tensor.cpu().numpy()
+        # parcel_tensor[:, 6:9] = ijk
+        # self.parcel = parcel_tensor.cpu().numpy()
 
         return depo_count #, film_max, surface_true
 
@@ -383,7 +383,7 @@ class etching(surface_normal):
         # if step == 0:
         #     self.parcel = np.zeros((1, 10))
         # tmax = time
-
+        start_time = Time.time()
         tstep = self.timeStep
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
@@ -420,19 +420,31 @@ class etching(surface_normal):
         self.Parcelgen(p1, v1, typeIDIn)
         # self.parcel = self.parcel[1:, :]
 
-        with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
+        with tqdm(total=100, desc='particle input', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             i = 0
-            while inputAll < max_react_count:
+            while self.parcel.shape[0] > 500:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
-                inputAll += inputCount
                 # if count_reaction > self.max_react_count:
                 #     break
                 t += tstep
+                if t > 1000*tstep and depo_count < 10:
+                    end_time = Time.time()
+
+                    # 计算运行时间并转换为分钟和秒
+                    elapsed_time = end_time - start_time
+                    minutes = int(elapsed_time // 60)
+                    seconds = int(elapsed_time % 60)
+
+                    # 输出运行时间
+                    print(f"run time: {minutes} min {seconds} sec")
+                    break
+
                 vzMax = np.max(self.parcel[:,5])
                 vzMin = np.min(self.parcel[:,5])
-                if self.inputMethod == 'bunch':
+                if self.inputMethod == 'bunch' and inputAll < max_react_count:
+                    inputAll += inputCount
                     p1 = posGenerator(inputCount, filmThickness, emptyZ)
                     v1 = velGenerator(inputCount)
                     typeIDIn = np.zeros(inputCount)
@@ -442,25 +454,24 @@ class etching(surface_normal):
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
                 if int(inputAll/max_react_count*100) > i:
-                    Time.sleep(0.01)
                     pbar.update(1)
-                    self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
-                                .format(i, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
                     i += 1
-                
+                self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
+                            .format(i, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
+            
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
                         filmThickness = thick
                         break
                     
-                if self.depo_or_etching == 'depo':
-                    if self.depoPoint[2] == filmThickness:
-                        print('depo finish')
-                        break
-                elif self.depo_or_etching == 'etching':
-                    if self.etchingPoint[2] == filmThickness:
-                        print('etch finish')
-                        break      
+                # if self.depo_or_etching == 'depo':
+                #     if self.depoPoint[2] == filmThickness:
+                #         print('depo finish')
+                #         break
+                # elif self.depo_or_etching == 'etching':
+                #     if self.etchingPoint[2] == filmThickness:
+                #         print('etch finish')
+                #         break      
 
                 # self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
                 #               .format(i, tstep, depo_count, count_reaction, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
@@ -565,12 +576,13 @@ class etching(surface_normal):
         return result
     
         # def runEtch(self, velGeneratorType, typeID, inputCount, emptyZ):
-    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, max_react_count, Zgap):
+    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, max_react_count, Zgap, step):
         self.film = film
         self.parcel = parcel
         self.cellSizeX = self.film.shape[0]
         self.cellSizeY = self.film.shape[1]
         self.cellSizeZ = self.film.shape[2]
+        self.log.info('circle step:{}'.format(step))
         result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, emptyZ=Zgap)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
         #     break             
