@@ -6,7 +6,8 @@ import math
 from math import pi
 
 class surface_normal:
-    def __init__(self, center_with_direction, range3D, InOrOut, celllength, yield_hist = None):
+    def __init__(self, center_with_direction, range3D, InOrOut, celllength, yield_hist, \
+                 maskTop, maskBottom, maskStep, maskCenter):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
         # boundary x1x2 y1y2 z1z2
@@ -14,6 +15,10 @@ class surface_normal:
         self.celllength = celllength
         # In for +1 out for -1
         self.InOrOut = InOrOut 
+        self.maskTop = maskTop
+        self.maskBottom = maskBottom
+        self.maskStep = maskStep
+        self.maskCenter = maskCenter
         if yield_hist.all() == None:
             self.yield_hist = np.array([[1.0, 1.05,  1.2,  1.4,  1.5, 1.07, 0.65, 0.28, 0.08,  0], \
                                         [  0,   pi/18,   pi/9,   pi/6,   2*pi/9,   5*pi/18,   pi/3,   7*pi/18,   4*pi/9, pi/2]])
@@ -26,7 +31,7 @@ class surface_normal:
     def scanZ(self, film): # fast scanZ
         film = torch.Tensor(film)
         xshape, yshape, zshape = film.shape
-        
+        self.zshape = zshape
         # 初始化一个全零的表面稀疏张量
         surface_sparse = torch.zeros((xshape, yshape, zshape))
         
@@ -105,6 +110,29 @@ class surface_normal:
 
         return np.concatenate(planes_consist, axis=0) 
 
+
+    def mask_normal(self, planes):
+        maskWall_indice = np.logical_and(planes[:, 5] > self.zshape - self.maskBottom, planes[:, 5] < self.zshape - self.maskTop)
+        test = planes[maskWall_indice, 3:]
+
+        test[:, 0] -= self.maskCenter[0]
+        test[:, 1] -= self.maskCenter[1]
+
+        np.sqrt(test[:, 0]*test[:, 0] + test[:, 1]*test[:, 1] )
+
+        vector_z = np.sqrt(test[:, 0]*test[:, 0] + test[:, 1]*test[:, 1])/self.maskStep
+
+        new_vector = np.array([-test[:, 0], -test[:, 1], -vector_z]).T
+        new_vector_norm = np.linalg.norm(new_vector, axis=-1)
+
+        new_vector[:, 0] = np.divide(new_vector[:, 0], new_vector_norm)
+        new_vector[:, 1] = np.divide(new_vector[:, 1], new_vector_norm)
+        new_vector[:, 2] = np.divide(new_vector[:, 2], new_vector_norm)
+
+        planes[maskWall_indice, :3] = new_vector
+
+        return planes
+
     def get_pointcloud(self, film):
         test = self.scanZ(film)
         points = test.indices().T
@@ -136,7 +164,7 @@ class surface_normal:
 
         # 调用 normalconsistency_3D_real 方法
         planes_consist = self.normalconsistency_3D_real(planes)
-
+        planes_consist = self.mask_normal(planes_consist)
         return planes_consist
 
     def get_inject_normal(self, plane, pos, vel):

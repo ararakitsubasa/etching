@@ -5,7 +5,7 @@ import time as Time
 from tqdm import tqdm
 import logging
 # from Collision import transport
-from surface_normalize_sf import surface_normal
+from surface_normalize_bosch import surface_normal
 from numba import jit, prange
 import torch
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
@@ -36,7 +36,7 @@ import torch
 
 react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [0.0, 0, 0, 0]]])
+                        [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -45,14 +45,14 @@ react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
 #       Si c4f8 mask
 # sf   ([[KD, x, x],
 # c4f8   [+,  x, x],
-# Ar     [+, KD, x]])
+# Ar     [+, KD, +]])
 
 react_type_table = np.array([[2, 0, 0],
                        [1, 0, 0],
-                       [1, 3, 0]])
+                       [1, 3, 1]])
 
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True, parallel=False)
 def reaction_yield(parcel, film, theta):
     # print('react parcel', parcel.shape)
     # print('react film', film.shape)
@@ -141,12 +141,14 @@ def removeFloat(film):  # fast scanZ
 
 class etching(surface_normal):
     def __init__(self,inputMethod, depo_or_etching, etchingPoint,depoPoint,density, 
-                 center_with_direction, range3D, InOrOut, yield_hist, #surface_normal
+                 center_with_direction, range3D, InOrOut, yield_hist,
+                 maskTop, maskBottom, maskStep, maskCenter, #surface_normal
                  reaction_type, #reaction 
                  param, n, celllength, kdtreeN,filmKDTree,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
-        surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, yield_hist)
+        surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, yield_hist,\
+                                maskTop, maskBottom, maskStep, maskCenter)
         self.param = param # n beta
         self.kdtreeN = kdtreeN
         # self.cellSizeX = cellSize[0]
@@ -285,7 +287,7 @@ class etching(surface_normal):
                     to_depo = np.where(depo_parcel == type[0])[0] #etching
 
                     # depo for depo_parcel > 0
-                    dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=10)
+                    dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=32)
 
                     surface_indice = np.argwhere(surface_depo == True)
 
