@@ -48,8 +48,8 @@ react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
 # Ar     [+, KD, +]])
 
 react_type_table = np.array([[2, 0, 0],
-                       [1, 0, 0],
-                       [1, 3, 1]])
+                           [1, 0, 0],
+                           [4, 3, 1]])
 
 
 @jit(nopython=True, parallel=False)
@@ -83,6 +83,8 @@ def reaction_yield(parcel, film, theta):
                 depo_parcel[i] = 3
             elif react_type == 1: # +
                 depo_parcel[i] = 1
+            elif react_type == 4: # Ar - Si
+                depo_parcel[i] = 4
             elif react_type == 0:  # no reaction
                 depo_parcel[i] = 0
     for i in prange(parcel.shape[0]):
@@ -143,7 +145,7 @@ class etching(surface_normal):
     def __init__(self,inputMethod, depo_or_etching, etchingPoint,depoPoint,density, 
                  center_with_direction, range3D, InOrOut, yield_hist,
                  maskTop, maskBottom, maskStep, maskCenter, #surface_normal
-                 reaction_type, #reaction 
+                 reaction_type,  #reaction 
                  param, n, celllength, kdtreeN,filmKDTree,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
@@ -316,7 +318,7 @@ class etching(surface_normal):
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
 
-            return np.sum(depo_parcel != 0) #, film_max, np.sum(surface_film)
+            return np.sum(depo_parcel == self.depo_count_type) #, film_max, np.sum(surface_film)
         else:
             return 0
 
@@ -379,7 +381,7 @@ class etching(surface_normal):
         self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
-    def runEtch(self, velGeneratorType, typeID, inputCount,max_react_count, emptyZ):
+    def runEtch(self, velGeneratorType, typeID, inputCount,max_react_count, emptyZ, step):
 
         self.log.info('inputType:{}'.format(typeID))
         # if step == 0:
@@ -423,7 +425,7 @@ class etching(surface_normal):
         # self.parcel = self.parcel[1:, :]
 
         with tqdm(total=100, desc='particle input', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
-            i = 0
+            previous_percentage = 0  # 记录上一次的百分比
             while self.parcel.shape[0] > 500:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
@@ -431,7 +433,7 @@ class etching(surface_normal):
                 # if count_reaction > self.max_react_count:
                 #     break
                 t += tstep
-                if t > 1000*tstep and depo_count < 10:
+                if count_reaction > max_react_count:
                     end_time = Time.time()
 
                     # 计算运行时间并转换为分钟和秒
@@ -440,26 +442,42 @@ class etching(surface_normal):
                     seconds = int(elapsed_time % 60)
 
                     # 输出运行时间
-                    print(f"run time: {minutes} min {seconds} sec")
+                    self.log.info(f"run time: {minutes} min {seconds} sec")
+                    self.log.info('DataFind---step:{},inputType:{},count_reaction_all:{},inputAll:{}'.format(step,typeID,count_reaction,inputAll))
+                    break
+
+                if count_reaction > max_react_count/2 and depo_count < 10:
+                    end_time = Time.time()
+
+                    # 计算运行时间并转换为分钟和秒
+                    elapsed_time = end_time - start_time
+                    minutes = int(elapsed_time // 60)
+                    seconds = int(elapsed_time % 60)
+
+                    # 输出运行时间
+                    self.log.info(f"stop by depo_count run time: {minutes} min {seconds} sec")
+                    self.log.info('DataFind---step:{},inputType:{},count_reaction_all:{},inputAll:{}'.format(step,typeID,count_reaction,inputAll))
                     break
 
                 vzMax = np.max(self.parcel[:,5])
                 vzMin = np.min(self.parcel[:,5])
-                if self.inputMethod == 'bunch' and inputAll < max_react_count:
-                    inputAll += inputCount
-                    p1 = posGenerator(inputCount, filmThickness, emptyZ)
-                    v1 = velGenerator(inputCount)
-                    typeIDIn = np.zeros(inputCount)
-                    typeIDIn[:] = typeID
-                    self.Parcelgen(p1, v1, typeIDIn)
+                # if self.inputMethod == 'bunch' and inputAll < max_react_count:
+                inputAll += inputCount
+                p1 = posGenerator(inputCount, filmThickness, emptyZ)
+                v1 = velGenerator(inputCount)
+                typeIDIn = np.zeros(inputCount)
+                typeIDIn[:] = typeID
+                self.Parcelgen(p1, v1, typeIDIn)
 
                 planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
-                if int(inputAll/max_react_count*100) > i:
-                    pbar.update(1)
-                    i += 1
-                self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
-                            .format(i, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
+                current_percentage = int(count_reaction / max_react_count * 100)  # 当前百分比
+                if current_percentage > previous_percentage:
+                    update_value = current_percentage - previous_percentage  # 计算进度差值
+                    pbar.update(update_value)
+                    previous_percentage = current_percentage  # 更新上一次的百分比
+                    self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{},  input_count:{}'\
+                                .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
             
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
@@ -532,8 +550,8 @@ class etching(surface_normal):
     
     def velGenerator_updown_normal(self, IN):
         velosity_matrix = np.zeros((IN, 3))
-        velosity_matrix[:, 0] = np.random.randn(IN)*0.01
-        velosity_matrix[:, 1] = np.random.randn(IN)*0.01
+        velosity_matrix[:, 0] = np.random.randn(IN)*0.001
+        velosity_matrix[:, 1] = np.random.randn(IN)*0.001
         velosity_matrix[:, 2] = -1 
 
         return velosity_matrix
@@ -578,14 +596,15 @@ class etching(surface_normal):
         return result
     
         # def runEtch(self, velGeneratorType, typeID, inputCount, emptyZ):
-    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, max_react_count, Zgap, step):
+    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, max_react_count, depo_count_type, Zgap, step):
+        self.depo_count_type = depo_count_type
         self.film = film
         self.parcel = parcel
         self.cellSizeX = self.film.shape[0]
         self.cellSizeY = self.film.shape[1]
         self.cellSizeZ = self.film.shape[2]
         self.log.info('circle step:{}'.format(step))
-        result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, emptyZ=Zgap)
+        result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, Zgap, step)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
         #     break             
         # del self.log, self.fh 
