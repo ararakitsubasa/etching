@@ -164,7 +164,7 @@ class surface_normal:
 
         # 调用 normalconsistency_3D_real 方法
         planes_consist = self.normalconsistency_3D_real(planes)
-        planes_consist = self.mask_normal(planes_consist)
+        # planes_consist = self.mask_normal(planes_consist)
         return planes_consist
 
     def get_inject_normal(self, plane, pos, vel):
