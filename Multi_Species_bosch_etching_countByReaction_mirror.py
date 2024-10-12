@@ -150,7 +150,7 @@ class etching(surface_normal):
                  param, n, celllength, kdtreeN,filmKDTree,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
-        surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, yield_hist,\
+        surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
                                 maskTop, maskBottom, maskStep, maskCenter)
         self.param = param # n beta
         self.kdtreeN = kdtreeN
@@ -271,9 +271,14 @@ class etching(surface_normal):
         # print('pos1 shape',pos_1.shape[0])
         # print('ijk_1',ijk_1.shape[0])
         # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
+        ddi=0
+        dl1=0
+        ddshape=0 
+        maxdd=0
         if pos_1.size != 0:
-            get_plane, get_theta = self.get_inject_normal(planes, pos_1, vel_1)
-
+            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4 = self.get_inject_normal(planes, pos_1, vel_1)
+            if pos1e4.shape[0] > 0:
+                np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/pos1e4', pos1e4)
             # self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
             #     reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
             self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
@@ -342,9 +347,9 @@ class etching(surface_normal):
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
 
-            return np.sum(depo_parcel == self.depo_count_type) #, film_max, np.sum(surface_film)
+            return np.sum(depo_parcel == self.depo_count_type), ddshape, maxdd, ddi, dl1 #, film_max, np.sum(surface_film)
         else:
-            return 0
+            return 0, ddshape, maxdd, ddi, dl1
 
     def getAcc_depo(self, tStep, planes):
 
@@ -352,7 +357,7 @@ class etching(surface_normal):
         self.boundary()
         self.removeFloat()
         # print(pos_cp)
-        depo_count = self.etching_film(planes)
+        depo_count, ddshape, maxdd, ddi, dl1 = self.etching_film(planes)
 
         # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
         # i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
@@ -386,7 +391,7 @@ class etching(surface_normal):
         # parcel_tensor[:, 6:9] = ijk
         # self.parcel = parcel_tensor.cpu().numpy()
 
-        return depo_count #, film_max, surface_true
+        return depo_count, ddshape, maxdd, ddi, dl1 #, film_max, surface_true
 
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
     def Parcelgen(self, pos, vel, typeID):
@@ -451,11 +456,11 @@ class etching(surface_normal):
         with tqdm(total=100, desc='particle input', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             previous_percentage = 0  # 记录上一次的百分比
             while self.parcel.shape[0] > 500:
-                if t < 200*self.timeStep:
-                    tstep = 2 * self.timeStep
-                else:
-                    tstep = self.timeStep
-                depo_count = self.getAcc_depo(tstep, planes)
+                # if t < 200*self.timeStep:
+                #     tstep = 2 * self.timeStep
+                # else:
+                #     tstep = self.timeStep
+                depo_count, ddshape, maxdd, ddi, dl1 = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
                 # if count_reaction > self.max_react_count:
@@ -504,8 +509,8 @@ class etching(surface_normal):
                     update_value = current_percentage - previous_percentage  # 计算进度差值
                     pbar.update(update_value)
                     previous_percentage = current_percentage  # 更新上一次的百分比
-                    self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{},  input_count:{}'\
-                                .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
+                    self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{}, input_count:{}, ddi:{}, dl1:{}, ddshape:{}, maxdd:{}'\
+                                .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0], ddi, dl1, ddshape, maxdd))
             
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:

@@ -6,13 +6,14 @@ import math
 from math import pi
 
 class surface_normal:
-    def __init__(self, center_with_direction, range3D, InOrOut, celllength, yield_hist, \
+    def __init__(self, center_with_direction, range3D, InOrOut, celllength, tstep, yield_hist, \
                  maskTop, maskBottom, maskStep, maskCenter):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
         # boundary x1x2 y1y2 z1z2
         self.range3D = range3D 
         self.celllength = celllength
+        self.tstep = tstep
         # In for +1 out for -1
         self.InOrOut = InOrOut 
         self.maskTop = maskTop
@@ -174,13 +175,21 @@ class surface_normal:
         velocity_normal = np.linalg.norm(vel, axis=1)
         velocity = np.divide(vel.T, velocity_normal).T
         plane_tree = KDTree(plane_point*self.celllength)
-
+        i = 0
+        dl1 = 0
         dd, ii = plane_tree.query(pos, k=1, workers=1)
+        # while np.any(dd > 3e-4):
+        #     i += 1
+        #     dl1 += np.sum(dd > 3e-4)
+        #     pos[dd>3e-4, :] -= vel[dd>3e-4, :]*self.celllength/2
+        #     dd, ii = plane_tree.query(pos, k=1, workers=1)
+
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii]
-
+        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5]
+        # return plane_point_int, normal[ii], i, dl1
+    
     def get_inject_theta(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
         plane_point = plane[:, 3:6]
