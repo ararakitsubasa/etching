@@ -34,7 +34,7 @@ import torch
 #                         [[0.800,  -1, 1], [0.0, 0,  0]],
 #                         [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
 
-react_table = np.array([[[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
@@ -263,22 +263,20 @@ class etching(surface_normal):
         sumFilm = np.sum(self.film, axis=-1)
         # indice_inject = np.array(sumFilm[i, j, k] >= 1) 
         indice_inject = np.array(sumFilm[i, j, k] != 0) 
+        reactListAll = np.ones(indice_inject.shape[0])*-2
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
         vel_1 = self.parcel[indice_inject, 3:6]
-        ijk_1 = self.parcel[indice_inject, 6:9]
-        # print('pos1 shape',pos_1.shape[0])
-        # print('ijk_1',ijk_1.shape[0])
-        # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
+
         ddi=0
         dl1=0
         ddshape=0 
         maxdd=0
         if pos_1.size != 0:
             get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4 = self.get_inject_normal(planes, pos_1, vel_1)
-            if pos1e4.shape[0] > 0:
-                np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/pos1e4', pos1e4)
+            # if pos1e4.shape[0] > 0:
+                # np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/pos1e4', pos1e4)
             # self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
             #     reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
             self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
@@ -340,9 +338,11 @@ class etching(surface_normal):
                         surface_film = np.array(self.film[:,:,:,type[1]] < 9)
                         self.film[surface_film, type[1]] = 0
 
-            if np.any(np.where(reactList != -1)[0]):
-                indice_inject[np.where(reactList == -1)[0]] = False
+            reactListAll[indice_inject] = reactList
+            if np.any(reactListAll != -1):
+                indice_inject[np.where(reactListAll == -1)] = False
                 self.parcel = self.parcel[~indice_inject]
+            # self.parcel = self.parcel[~indice_inject]
         # delete the particle injected into the film
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
@@ -452,14 +452,12 @@ class etching(surface_normal):
         typeIDIn[:] = typeID
         self.Parcelgen(p1, v1, typeIDIn)
         # self.parcel = self.parcel[1:, :]
-
+        ti = 0
         with tqdm(total=100, desc='particle input', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             previous_percentage = 0  # 记录上一次的百分比
             while self.parcel.shape[0] > 500:
-                # if t < 200*self.timeStep:
-                #     tstep = 2 * self.timeStep
-                # else:
-                #     tstep = self.timeStep
+                # np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/parcel4_{}'.format(ti), self.parcel)
+                ti += 1
                 depo_count, ddshape, maxdd, ddi, dl1 = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
