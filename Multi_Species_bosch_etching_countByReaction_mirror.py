@@ -60,7 +60,7 @@ def reaction_yield(parcel, film, theta):
     num_parcels = parcel.shape[0]
     num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
-    reactList = np.ones(parcel.shape[0])*-1
+    reactList = np.ones(parcel.shape[0], dtype=np.int_)*-1
     for i in range(num_parcels):
         for j in range(num_reactions):
             if film[i, j] <= 0:
@@ -252,10 +252,30 @@ class etching(surface_normal):
 
         # 将孤立的单元格设为0
         self.film[condition, :] = 0
-        
-        # return film
 
-    def etching_film(self, planes):
+    def removeFloatPolymer(self):  # fast scanZ
+        filmC = self.film[:,:,:,0]
+        # 获取当前平面的非零元素布尔索引
+        current_plane = self.film[:,:,:,1] != 0
+
+        # 创建一个全是False的布尔数组来存储邻居的检查结果
+        neighbors = np.zeros_like(filmC, dtype=bool)
+
+        # 检查各个方向的邻居是否为零
+        neighbors[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面的邻居不为0
+        neighbors[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面的邻居不为0
+        neighbors[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边的邻居不为0
+        neighbors[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边的邻居不为0
+        neighbors[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面的邻居不为0
+        neighbors[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面的邻居不为0
+
+        # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
+        condition = current_plane & ~neighbors
+
+        # 将孤立的单元格设为0
+        self.film[condition, :] = 0
+
+    def etching_film(self):
 
         i = self.parcel[:, 6].astype(int)
         j = self.parcel[:, 7].astype(int)
@@ -274,9 +294,12 @@ class etching(surface_normal):
         ddshape=0 
         maxdd=0
         if pos_1.size != 0:
-            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4 = self.get_inject_normal(planes, pos_1, vel_1)
-            # if pos1e4.shape[0] > 0:
-                # np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/pos1e4', pos1e4)
+            self.planes = self.get_pointcloud(sumFilm)
+            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4 = self.get_inject_normal(self.planes, pos_1, vel_1)
+            if ddi > 1000:
+                np.save('./ddi_check/pos1e4', pos1e4)
+                np.save('./ddi_check/vel1e4', vel1e4)
+                np.save('./ddi_check/film', self.film)
             # self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
             #     reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
             self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
@@ -351,13 +374,14 @@ class etching(surface_normal):
         else:
             return 0, ddshape, maxdd, ddi, dl1
 
-    def getAcc_depo(self, tStep, planes):
+    def getAcc_depo(self, tStep):
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
         self.boundary()
         self.removeFloat()
+        self.removeFloatPolymer()
         # print(pos_cp)
-        depo_count, ddshape, maxdd, ddi, dl1 = self.etching_film(planes)
+        depo_count, ddshape, maxdd, ddi, dl1 = self.etching_film()
 
         # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
         # i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
@@ -421,7 +445,7 @@ class etching(surface_normal):
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
 
-        planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+        self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
         count_reaction = 0
         inputAll = 0
         filmThickness = self.substrateTop
@@ -458,7 +482,7 @@ class etching(surface_normal):
             while self.parcel.shape[0] > 500:
                 # np.save('./bosch_data_1011_ratio08_trench_condition5_300wide/parcel4_{}'.format(ti), self.parcel)
                 ti += 1
-                depo_count, ddshape, maxdd, ddi, dl1 = self.getAcc_depo(tstep, planes)
+                depo_count, ddshape, maxdd, ddi, dl1 = self.getAcc_depo(tstep)
                 # print('parcel', self.parcel.shape)
                 count_reaction += depo_count
                 # if count_reaction > self.max_react_count:
@@ -500,15 +524,15 @@ class etching(surface_normal):
                 typeIDIn[:] = typeID
                 self.Parcelgen(p1, v1, typeIDIn)
 
-                planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+                # planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
                 current_percentage = int(count_reaction / max_react_count * 100)  # 当前百分比
                 if current_percentage > previous_percentage:
                     update_value = current_percentage - previous_percentage  # 计算进度差值
                     pbar.update(update_value)
                     previous_percentage = current_percentage  # 更新上一次的百分比
-                    self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{}, input_count:{}, ddi:{}, dl1:{}, ddshape:{}, maxdd:{}'\
-                                .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0], ddi, dl1, ddshape, maxdd))
+                self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{}, input_count:{}, ddi:{}, dl1:{}, ddshape:{}, maxdd:{}'\
+                            .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0], ddi, dl1, ddshape, maxdd))
             
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:

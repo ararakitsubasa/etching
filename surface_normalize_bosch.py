@@ -178,16 +178,16 @@ class surface_normal:
         i = 0
         dl1 = 0
         dd, ii = plane_tree.query(pos, k=1, workers=1)
-        # while np.any(dd > 3e-4):
+        # while np.any(dd > 2e-5):
         #     i += 1
-        #     dl1 += np.sum(dd > 3e-4)
-        #     pos[dd>3e-4, :] -= vel[dd>3e-4, :]*self.celllength/2
+        #     dl1 += np.sum(dd > 2e-5)
+        #     pos[dd>2e-5, :] -= vel[dd>2e-5, :]*self.celllength/2
         #     dd, ii = plane_tree.query(pos, k=1, workers=1)
 
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5]
+        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5]
         # return plane_point_int, normal[ii], i, dl1
     
     def get_inject_theta(self, plane, pos, vel):
