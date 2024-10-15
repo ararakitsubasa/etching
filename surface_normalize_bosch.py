@@ -187,7 +187,7 @@ class surface_normal:
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5]
+        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5], dd>2e-5
         # return plane_point_int, normal[ii], i, dl1
     
     def get_inject_theta(self, plane, pos, vel):

@@ -167,12 +167,12 @@ class etching(surface_normal):
         k = self.parcel[:, 8].astype(int)
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
-
+        reactListAll = np.ones(indice_inject.shape[0])*-2
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
         vel_1 = self.parcel[indice_inject, 3:6]
-        ijk_1 = self.parcel[indice_inject, 6:9]
+
         # print('pos1 shape',pos_1.shape[0])
         # print('ijk_1',ijk_1.shape[0])
         # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
@@ -237,9 +237,13 @@ class etching(surface_normal):
         # delete the particle injected into the film
                 self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
-            if np.any(np.where(reactList != -1)[0]):
-                indice_inject[np.where(reactList == -1)[0]] = False
+            reactListAll[indice_inject] = reactList
+            if np.any(reactListAll != -1):
+                indice_inject[np.where(reactListAll == -1)] = False
                 self.parcel = self.parcel[~indice_inject]
+            # if np.any(np.where(reactList != -1)[0]):
+            #     indice_inject[np.where(reactList == -1)[0]] = False
+            #     self.parcel = self.parcel[~indice_inject]
         # delete the particle injected into the film
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]

@@ -147,7 +147,7 @@ class etching(surface_normal):
                  maskTop, maskBottom, maskStep, maskCenter, #surface_normal
                  mirrorGap, # mirror
                  reaction_type,  #reaction 
-                 param, n, celllength, kdtreeN,filmKDTree,
+                 param, n, celllength, kdtreeN,filmKDTree,weight,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
         surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
@@ -170,6 +170,7 @@ class etching(surface_normal):
 
         # self.film = film
         self.filmKDTree = filmKDTree
+        self.weight = weight
         # filmKDTree=np.array([[2, 0], [3, 1]])
         #       KDTree    [depo_parcel,  film]
         self.mirrorGap = mirrorGap
@@ -295,20 +296,22 @@ class etching(surface_normal):
         maxdd=0
         if pos_1.size != 0:
             self.planes = self.get_pointcloud(sumFilm)
-            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4 = self.get_inject_normal(self.planes, pos_1, vel_1)
-            if ddi > 1000:
-                np.save('./ddi_check/pos1e4', pos1e4)
-                np.save('./ddi_check/vel1e4', vel1e4)
-                np.save('./ddi_check/film', self.film)
+            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4, indiceOut = self.get_inject_normal(self.planes, pos_1, vel_1)
+            # if ddi > 2000 and ddi < 2100:
+            #     np.save('./ddi_check/pos_{}'.format(dl1), self.parcel[indice_inject][indiceOut])
+                # np.save('./ddi_check/vel1e4', vel1e4)
+                # np.save('./ddi_check/film', self.film)
             # self.film[i[indice_inject], j[indice_inject],k[indice_inject]],self.parcel[indice_inject,:], reactList, depo_parcel = \
             #     reaction_yield(self.parcel[indice_inject], self.film[i[indice_inject], j[indice_inject],k[indice_inject]], get_theta)
             self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],self.parcel[indice_inject,:], reactList, depo_parcel = \
                 reaction_yield(self.parcel[indice_inject], self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]], get_theta)
-
+            # if ddi > 2000 and ddi < 2100:
+            #     np.save('./ddi_check/repos_{}'.format(dl1), self.parcel[indice_inject][indiceOut])
         # define depo area 
             # surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
             for type in self.filmKDTree:
                 if np.any(depo_parcel == type[0]):
+                    # self.log.info('depo_parcel:{}'.format(type[0]))
                     surface_depo = np.array(self.film[:,:,:, type[1]] > 0) 
 
                     # mirror
@@ -334,9 +337,10 @@ class etching(surface_normal):
                     surface_indice = np.argwhere(self.surface_depo_mirror == True)
 
                     ddsum = np.sum(dd, axis=1)
-
+                    # self.log.info('surface_indice', surface_indice)
                     # kdi order
                     for kdi in range(self.kdtreeN):
+                        # print(ii)
                         i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
                         j1 = surface_indice[ii][:,kdi,1]
                         k1 = surface_indice[ii][:,kdi,2]
@@ -352,7 +356,7 @@ class etching(surface_normal):
                         j1[indiceYMax] -= self.cellSizeY
                         j1[indiceYMin] += self.cellSizeY
                         # delete the particle injected into the film
-                        self.film[i1,j1,k1,type[1]] -= 0.2*dd[:,kdi]/ddsum
+                        self.film[i1,j1,k1,type[1]] += self.weight*dd[:,kdi]/ddsum
 
                     if self.depo_or_etching == 'depo':
                         surface_film = np.array(self.film[:, :, :,type[1]] >= 11)
@@ -362,9 +366,18 @@ class etching(surface_normal):
                         self.film[surface_film, type[1]] = 0
 
             reactListAll[indice_inject] = reactList
+            # bparcel = self.parcel.shape[0]
             if np.any(reactListAll != -1):
                 indice_inject[np.where(reactListAll == -1)] = False
                 self.parcel = self.parcel[~indice_inject]
+            # aparcel = self.parcel.shape[0]
+            # reactReflect1 = np.sum(reactListAll == -1)
+            # reactReflect2 = np.sum(reactListAll == -2)
+            # reactReflect3 = np.sum(reactListAll >= 0)
+            # reactDiff = reactListAll.shape[0] - reactReflect1 - reactReflect2 -reactReflect3
+            # self.log.info('reactListAllShape:{},indice_injectShape:{},  reactReflect1:{}, reactReflect2:{}, reactReflect3:{}, reactDiff:{}, parcelDiff:{}'\
+            #               .format(reactListAll.shape[0], indice_inject.shape[0], reactReflect1, reactReflect2, reactReflect3, reactDiff, bparcel-aparcel))
+
             # self.parcel = self.parcel[~indice_inject]
         # delete the particle injected into the film
         # if np.any(indice_inject):
@@ -398,8 +411,8 @@ class etching(surface_normal):
         self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
 
         # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
-        ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
-
+        # ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
+        ijk = np.rint((self.parcel[:, :3] * inv_celllength)).astype(int)
         # 一次性赋值给 parcel 的第 6、7、8 列
         self.parcel[:, 6:9] = ijk
 
@@ -420,10 +433,12 @@ class etching(surface_normal):
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
     def Parcelgen(self, pos, vel, typeID):
 
-        i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
-        j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
-        k = np.floor((pos[:, 2]/self.celllength) + 0.5).astype(int)
-
+        # i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
+        # j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
+        # k = np.floor((pos[:, 2]/self.celllength) + 0.5).astype(int)
+        i = np.floor((pos[:, 0]/self.celllength)).astype(int)
+        j = np.floor((pos[:, 1]/self.celllength)).astype(int)
+        k = np.floor((pos[:, 2]/self.celllength)).astype(int)
         parcelIn = np.zeros((pos.shape[0], 10))
         parcelIn[:, :3] = pos
         parcelIn[:, 3:6] = vel
@@ -659,6 +674,7 @@ class etching(surface_normal):
         self.cellSizeY = self.film.shape[1]
         self.cellSizeZ = self.film.shape[2]
         self.surface_depo_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
+        print(self.surface_depo_mirror.shape)
         self.log.info('circle step:{}'.format(step))
         result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, Zgap, step)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
