@@ -233,20 +233,20 @@ class etching(surface_normal):
             self.parcel = self.parcel[~indices]
 
     def removeFloat(self):  # fast scanZ
-        sumFilm = np.sum(self.film, axis=-1)
+        filmC = self.film[:,:,:,0]
         # 获取当前平面的非零元素布尔索引
-        current_plane = sumFilm != 0
+        current_plane = self.film[:,:,:,0] != 0
 
         # 创建一个全是False的布尔数组来存储邻居的检查结果
-        neighbors = np.zeros_like(sumFilm, dtype=bool)
+        neighbors = np.zeros_like(filmC, dtype=bool)
 
         # 检查各个方向的邻居是否为零
-        neighbors[1:, :, :] |= sumFilm[:-1, :, :] != 0  # 上面的邻居不为0
-        neighbors[:-1, :, :] |= sumFilm[1:, :, :] != 0  # 下面的邻居不为0
-        neighbors[:, 1:, :] |= sumFilm[:, :-1, :] != 0  # 左边的邻居不为0
-        neighbors[:, :-1, :] |= sumFilm[:, 1:, :] != 0  # 右边的邻居不为0
-        neighbors[:, :, 1:] |= sumFilm[:, :, :-1] != 0  # 前面的邻居不为0
-        neighbors[:, :, :-1] |= sumFilm[:, :, 1:] != 0  # 后面的邻居不为0
+        neighbors[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面的邻居不为0
+        neighbors[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面的邻居不为0
+        neighbors[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边的邻居不为0
+        neighbors[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边的邻居不为0
+        neighbors[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面的邻居不为0
+        neighbors[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面的邻居不为0
 
         # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
         condition = current_plane & ~neighbors
