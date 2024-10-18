@@ -7,7 +7,7 @@ from math import pi
 
 class surface_normal:
     def __init__(self, center_with_direction, range3D, InOrOut, celllength, tstep, yield_hist, \
-                 maskTop, maskBottom, maskStep, maskCenter):
+                 maskTop, maskBottom, maskStep, maskCenter, backup):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
         # boundary x1x2 y1y2 z1z2
@@ -20,6 +20,7 @@ class surface_normal:
         self.maskBottom = maskBottom
         self.maskStep = maskStep
         self.maskCenter = maskCenter
+        self.backup = backup
         if yield_hist.all() == None:
             self.yield_hist = np.array([[1.0, 1.05,  1.2,  1.4,  1.5, 1.07, 0.65, 0.28, 0.08,  0], \
                                         [  0,   pi/18,   pi/9,   pi/6,   2*pi/9,   5*pi/18,   pi/3,   7*pi/18,   4*pi/9, pi/2]])
@@ -177,12 +178,20 @@ class surface_normal:
         plane_tree = KDTree(plane_point*self.celllength)
         i = 0
         dl1 = 0
+        indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
         dd, ii = plane_tree.query(pos, k=1, workers=1)
-        # while np.any(dd > 2e-5):
-        #     i += 1
-        #     dl1 += np.sum(dd > 2e-5)
-        #     pos[dd>2e-5, :] -= vel[dd>2e-5, :]*self.celllength/2
-        #     dd, ii = plane_tree.query(pos, k=1, workers=1)
+        indice_all[dd>2e-5] = True
+        if self.backup == True:
+            while np.any(dd > 2e-5):
+                i += 1
+                dl1 += np.sum(dd > 2e-5)
+                pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
+                dd_back, ii_back = plane_tree.query(pos, k=1, workers=1)
+                oscilation = dd - dd_back
+                oscilation_indice = oscilation < 0
+                indice_all[oscilation_indice] = False
+                dd = dd_back
+                indice_all[dd<=2e-5] = False
 
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])

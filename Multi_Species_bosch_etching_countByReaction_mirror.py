@@ -144,14 +144,14 @@ def removeFloat(film):  # fast scanZ
 class etching(surface_normal):
     def __init__(self,inputMethod, depo_or_etching, etchingPoint,depoPoint,density, 
                  center_with_direction, range3D, InOrOut, yield_hist,
-                 maskTop, maskBottom, maskStep, maskCenter, #surface_normal
+                 maskTop, maskBottom, maskStep, maskCenter, backup,#surface_normal
                  mirrorGap, # mirror
                  reaction_type,  #reaction 
                  param, n, celllength, kdtreeN,filmKDTree,weight,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
         surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
-                                maskTop, maskBottom, maskStep, maskCenter)
+                                maskTop, maskBottom, maskStep, maskCenter, backup)
         self.param = param # n beta
         self.kdtreeN = kdtreeN
         self.celllength = celllength
