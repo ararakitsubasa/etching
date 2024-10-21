@@ -177,26 +177,28 @@ class surface_normal:
         velocity = np.divide(vel.T, velocity_normal).T
         plane_tree = KDTree(plane_point*self.celllength)
         i = 0
-        dl1 = 0
-        indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
+        # indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
         dd, ii = plane_tree.query(pos, k=1, workers=1)
+        indice_all = np.zeros_like(dd, dtype=np.bool_)
+        oscilation_indice = np.zeros_like(dd, dtype=np.bool_)
         indice_all[dd>2e-5] = True
         if self.backup == True:
-            while np.any(dd > 2e-5):
+            while np.any(indice_all == True):
                 i += 1
-                dl1 += np.sum(dd > 2e-5)
                 pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
                 dd_back, ii_back = plane_tree.query(pos, k=1, workers=1)
                 oscilation = dd - dd_back
                 oscilation_indice = oscilation < 0
+                print('i:{},  oscilation:{}'.format(i, np.sum(oscilation_indice)))
                 indice_all[oscilation_indice] = False
                 dd = dd_back
+                ii = ii_back
                 indice_all[dd<=2e-5] = False
 
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5], dd>2e-5
+        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5], oscilation_indice
         # return plane_point_int, normal[ii], i, dl1
     
     def get_inject_theta(self, plane, pos, vel):

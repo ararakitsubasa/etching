@@ -449,7 +449,7 @@ class etching(surface_normal):
         self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
-    def runEtch(self, velGeneratorType, typeID, inputCount,max_react_count, emptyZ, step):
+    def runEtch(self, velGeneratorType, typeID, inputCount, runningCount, max_react_count, emptyZ, step):
 
         self.log.info('inputType:{}'.format(typeID))
         # if step == 0:
@@ -532,12 +532,13 @@ class etching(surface_normal):
                 vzMax = np.max(self.parcel[:,5])
                 vzMin = np.min(self.parcel[:,5])
                 # if self.inputMethod == 'bunch' and inputAll < max_react_count:
-                inputAll += inputCount
-                p1 = posGenerator(inputCount, filmThickness, emptyZ)
-                v1 = velGenerator(inputCount)
-                typeIDIn = np.zeros(inputCount)
-                typeIDIn[:] = typeID
-                self.Parcelgen(p1, v1, typeIDIn)
+                if self.parcel.shape[0] < runningCount:
+                    inputAll += inputCount
+                    p1 = posGenerator(inputCount, filmThickness, emptyZ)
+                    v1 = velGenerator(inputCount)
+                    typeIDIn = np.zeros(inputCount)
+                    typeIDIn[:] = typeID
+                    self.Parcelgen(p1, v1, typeIDIn)
 
                 # planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
@@ -666,7 +667,7 @@ class etching(surface_normal):
         return result
     
         # def runEtch(self, velGeneratorType, typeID, inputCount, emptyZ):
-    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, max_react_count, depo_count_type, Zgap, step):
+    def inputParticle(self,film, parcel, velGeneratorType, typeID, inputCount, runningCount, max_react_count, depo_count_type, Zgap, step):
         self.depo_count_type = depo_count_type
         self.film = film
         self.parcel = parcel
@@ -676,7 +677,7 @@ class etching(surface_normal):
         self.surface_depo_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
         print(self.surface_depo_mirror.shape)
         self.log.info('circle step:{}'.format(step))
-        result =  self.runEtch(velGeneratorType, typeID, inputCount, max_react_count, Zgap, step)
+        result =  self.runEtch(velGeneratorType, typeID, inputCount,runningCount, max_react_count, Zgap, step)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
         #     break             
         # del self.log, self.fh 
