@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree
 from scipy import interpolate
 import math
 from math import pi
@@ -138,7 +138,7 @@ class surface_normal:
     def get_pointcloud(self, film):
         test = self.scanZ(film)
         points = test.indices().T
-        surface_tree = KDTree(points)
+        surface_tree = cKDTree(points)
         dd, ii = surface_tree.query(points, k=18, workers=5)
 
         pointsNP = points.numpy()
@@ -175,7 +175,7 @@ class surface_normal:
         normal = plane[:, :3]
         # velocity_normal = np.linalg.norm(vel, axis=1)
         # velocity = np.divide(vel.T, velocity_normal).T
-        plane_tree = KDTree(plane_point*self.celllength)
+        plane_tree = cKDTree(plane_point*self.celllength)
         i = 0
         # indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
         dd, ii = plane_tree.query(pos, k=1, workers=1)
@@ -217,7 +217,7 @@ class surface_normal:
         normal = plane[:, :3]
         velocity_normal = np.linalg.norm(vel, axis=1)
         velocity = np.divide(vel.T, velocity_normal).T
-        plane_tree = KDTree(plane_point*self.celllength)
+        plane_tree = cKDTree(plane_point*self.celllength)
 
         dd, ii = plane_tree.query(pos, k=1, workers=1)
 
