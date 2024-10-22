@@ -173,26 +173,36 @@ class surface_normal:
         # plane = self.get_pointcloud(film)
         plane_point = plane[:, 3:6]
         normal = plane[:, :3]
-        velocity_normal = np.linalg.norm(vel, axis=1)
-        velocity = np.divide(vel.T, velocity_normal).T
+        # velocity_normal = np.linalg.norm(vel, axis=1)
+        # velocity = np.divide(vel.T, velocity_normal).T
         plane_tree = KDTree(plane_point*self.celllength)
         i = 0
         # indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
         dd, ii = plane_tree.query(pos, k=1, workers=1)
         indice_all = np.zeros_like(dd, dtype=np.bool_)
         oscilation_indice = np.zeros_like(dd, dtype=np.bool_)
+        dd_back = np.copy(dd)
+        ii_back = np.copy(ii)
         indice_all[dd>2e-5] = True
         if self.backup == True:
+            # pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
+            # dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
+            # oscilation = dd[indice_all] - dd_back[indice_all]
+            # oscilation_indice[indice_all] = oscilation < 0
+            # indice_all[oscilation_indice] = False
+            # indice_all[dd_back<=2e-5] = False
+            # print('oscilation:{}'.format(np.sum(oscilation_indice)))
             while np.any(indice_all == True):
                 i += 1
                 pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
-                dd_back, ii_back = plane_tree.query(pos, k=1, workers=1)
-                oscilation = dd - dd_back
-                oscilation_indice = oscilation < 0
-                print('i:{},  oscilation:{}'.format(i, np.sum(oscilation_indice)))
+                dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
+                oscilation = dd[indice_all] - dd_back[indice_all]
+                oscilation_indice[indice_all] = oscilation < 0
                 indice_all[oscilation_indice] = False
-                dd = dd_back
-                ii = ii_back
+                # print('i:{},  oscilation_indice:{}, oscilation:{}'.format(i, np.sum(oscilation_indice), np.sum(oscilation < 0)))
+                # indice_all[oscilation_indice] = False
+                dd = np.copy(dd_back)
+                ii = np.copy(ii_back)
                 indice_all[dd<=2e-5] = False
 
         plane_point_int = np.array(plane_point[ii]).astype(int)

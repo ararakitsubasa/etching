@@ -1,6 +1,6 @@
 import numpy as np
 # import cupy as cp
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree
 import time as Time
 from tqdm import tqdm
 import logging
@@ -52,49 +52,97 @@ react_type_table = np.array([[2, 0, 0],
                            [4, 3, 1]])
 
 
-@jit(nopython=True, parallel=False)
+# @jit(nopython=True, parallel=True)
+# def reaction_yield(parcel, film, theta):
+#     # print('react parcel', parcel.shape)
+#     # print('react film', film.shape)
+#     # print('react theta', theta.shape)
+#     num_parcels = parcel.shape[0]
+#     num_reactions = react_table.shape[1]
+#     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
+#     reactList = np.ones(parcel.shape[0], dtype=np.int_)*-1
+#     for i in range(num_parcels):
+#         for j in range(num_reactions):
+#             if film[i, j] <= 0:
+#                 choice[i, j] = 1
+#     depo_parcel = np.zeros(parcel.shape[0])
+#     for i in prange(parcel.shape[0]):
+#         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
+#         for j in prange(film.shape[1]):
+#             react_rate = react_table[int(parcel[i, -1]), j, 0]
+#             if react_rate > choice[i, j]:
+#                 acceptList[j] = True
+#         react_choice_indices = np.where(acceptList)[0]
+#         if react_choice_indices.size > 0:
+#             react_choice = np.random.choice(react_choice_indices)
+#             reactList[i] = react_choice
+#             react_type = react_type_table[int(parcel[i, -1]), react_choice]
+#             if react_type == 2: # kdtree Si-SF
+#                 depo_parcel[i] = 2
+#             elif react_type == 3: # kdtree Ar-c4f8
+#                 depo_parcel[i] = 3
+#             elif react_type == 1: # +
+#                 depo_parcel[i] = 1
+#             elif react_type == 4: # Ar - Si
+#                 depo_parcel[i] = 4
+#             elif react_type == 0:  # no reaction
+#                 depo_parcel[i] = 0
+#     for i in prange(parcel.shape[0]):
+#         if depo_parcel[i] == 1:
+#             film[i, :] += react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+#             # print('chemistry')
+#         if reactList[i] == -1:
+#             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
+#             # print('reflection')
+#             # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+
+#     return film, parcel, reactList, depo_parcel
+
+@jit(nopython=True, parallel=True)
 def reaction_yield(parcel, film, theta):
-    # print('react parcel', parcel.shape)
-    # print('react film', film.shape)
-    # print('react theta', theta.shape)
     num_parcels = parcel.shape[0]
     num_reactions = react_table.shape[1]
-    choice = np.random.rand(parcel.shape[0], react_table.shape[1])
-    reactList = np.ones(parcel.shape[0], dtype=np.int_)*-1
-    for i in range(num_parcels):
-        for j in range(num_reactions):
+    choice = np.random.rand(num_parcels, num_reactions)
+    reactList = np.ones(num_parcels, dtype=np.int_) * -1
+
+    # 手动循环替代布尔索引
+    for i in prange(film.shape[0]):
+        for j in prange(film.shape[1]):
             if film[i, j] <= 0:
                 choice[i, j] = 1
+
     depo_parcel = np.zeros(parcel.shape[0])
+
     for i in prange(parcel.shape[0]):
-        acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
+        acceptList = np.zeros(num_reactions, dtype=np.bool_)
         for j in prange(film.shape[1]):
             react_rate = react_table[int(parcel[i, -1]), j, 0]
             if react_rate > choice[i, j]:
                 acceptList[j] = True
+
         react_choice_indices = np.where(acceptList)[0]
         if react_choice_indices.size > 0:
-            react_choice = np.random.choice(react_choice_indices)
+            react_choice = react_choice_indices[np.random.randint(react_choice_indices.size)]
             reactList[i] = react_choice
             react_type = react_type_table[int(parcel[i, -1]), react_choice]
-            if react_type == 2: # kdtree Si-SF
+
+            if react_type == 2:
                 depo_parcel[i] = 2
-            elif react_type == 3: # kdtree Ar-c4f8
+            elif react_type == 3:
                 depo_parcel[i] = 3
-            elif react_type == 1: # +
+            elif react_type == 1:
                 depo_parcel[i] = 1
-            elif react_type == 4: # Ar - Si
+            elif react_type == 4:
                 depo_parcel[i] = 4
-            elif react_type == 0:  # no reaction
+            elif react_type == 0:
                 depo_parcel[i] = 0
+
     for i in prange(parcel.shape[0]):
         if depo_parcel[i] == 1:
             film[i, :] += react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
-            # print('chemistry')
+
         if reactList[i] == -1:
-            parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
-            # print('reflection')
-            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            parcel[i, 3:6] = SpecularReflect(parcel[i, 3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
@@ -285,6 +333,7 @@ class etching(surface_normal):
         # indice_inject = np.array(sumFilm[i, j, k] >= 1) 
         indice_inject = np.array(sumFilm[i, j, k] != 0) 
         reactListAll = np.ones(indice_inject.shape[0])*-2
+        oscilationList = np.zeros_like(indice_inject, dtype=np.bool_)
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
@@ -296,7 +345,9 @@ class etching(surface_normal):
         maxdd=0
         if pos_1.size != 0:
             self.planes = self.get_pointcloud(sumFilm)
-            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4, indiceOut = self.get_inject_normal(self.planes, pos_1, vel_1)
+            get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4, oscilation_indice = self.get_inject_normal(self.planes, pos_1, vel_1)
+            # print('oscilation_indice:{}'.format(oscilation_indice.shape))
+            # print('indice_inject:{}'.format(indice_inject.shape))
             # if ddi > 2000 and ddi < 2100:
             #     np.save('./ddi_check/pos_{}'.format(dl1), self.parcel[indice_inject][indiceOut])
                 # np.save('./ddi_check/vel1e4', vel1e4)
@@ -326,7 +377,7 @@ class etching(surface_normal):
                     self.surface_depo_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_depo[:self.mirrorGap, :self.mirrorGap, :]
                     # mirror end
 
-                    surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
+                    surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
 
                     to_depo = np.where(depo_parcel == type[0])[0] #etching
                     pos_1[:, 0] += self.mirrorGap*self.celllength
@@ -366,9 +417,13 @@ class etching(surface_normal):
                         self.film[surface_film, type[1]] = 0
 
             reactListAll[indice_inject] = reactList
+            oscilationList[indice_inject] = oscilation_indice
             # bparcel = self.parcel.shape[0]
+            # print('reactListAll:{}'.format(reactListAll[indice_inject].shape))
+            # print('oscilationList:{}'.format(oscilationList[indice_inject].shape))
             if np.any(reactListAll != -1):
                 indice_inject[np.where(reactListAll == -1)] = False
+                indice_inject[oscilationList == True] = False
                 self.parcel = self.parcel[~indice_inject]
             # aparcel = self.parcel.shape[0]
             # reactReflect1 = np.sum(reactListAll == -1)
@@ -690,49 +745,66 @@ if __name__ == "__main__":
     import cProfile
 
 
-    film = np.zeros((100, 100, 200, 2))
+    maskUp = 2.09
+    maskBottom = 2.6
+    maskDeep = 2.808
+
+    diameter = 120
+    maskUp_sim = maskUp/maskBottom*diameter
+    maskDeep_sim = maskDeep/maskBottom*diameter
+
+    film = np.zeros((200, 200, 250, 3))
 
     bottom = 100
-    height = 140
+    height = bottom + int(maskDeep_sim)
 
     density = 10
 
-    sphere = np.ones((100, 100, 200), dtype=bool)
+    sphere = np.ones((200, 200, 250), dtype=bool)
 
-    radius = 30
+    diameter = 120
 
-    center = 50
-    for i in range(sphere.shape[0]):
-        for j in range(sphere.shape[1]):
-            if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
-                sphere[i, j, bottom:height] = 0
+    center = 100
+    for k in range(int(diameter/2 - int(maskUp_sim/2))):
+        # print(diameter/2 - k)
+        radius = diameter/2 - k
+        # print('deep', int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k))
+        bottom_step = int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k)
+        for i in range(sphere.shape[0]):
+            for j in range(sphere.shape[1]):
+                if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
+                    sphere[i, j, bottom_step:bottom_step+int(maskDeep_sim/(diameter/2 - maskUp_sim/2))] = 0
 
-    film[sphere, 1] = density
+    film[sphere, 2] = density
     film[:, :, height:, :] = 0
     film[:, :, 0:bottom, 0] = density # bottom
     film[:, :, 0:bottom, 1] = 0 # bottom
+    film[:, :, 0:bottom, 2] = 0 # bottom
 
     etchfilm = film
 
-    # print(typeID[:10])
-    # print(velosity_matrix[0])
-    # print(vel_type_shuffle[:10])
+    logname = 'Multi_species_benchmark_1021_hole_ratio01'
 
-    # print(velosity_matrix[0])
-
-    logname = 'Multi_species_benchmark_0917'
     testEtch = etching(inputMethod='bunch', depo_or_etching='etching', 
-                    etchingPoint = np.array([center, center, 37]),depoPoint = np.array([center, center, 37]),
-                    density=density, center_with_direction=np.array([[35,100,75]]), 
-                    range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
-                    reaction_type=False, param = [1.6, -0.7],
-                    sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
-                    celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                    substrateTop=80,posGeneratorType='top', logname=logname)
+                    etchingPoint = np.array([center, center, bottom-30]),depoPoint = np.array([center, center, bottom-30]),
+                    density=density, center_with_direction=np.array([[100,100,150]]), 
+                    range3D=np.array([[0, 200, 0, 200, 0, 250]]), InOrOut=[1], yield_hist=np.array([None]),
+                    maskTop=40, maskBottom=98, maskStep=10, maskCenter=[100, 100],backup=False, 
+                    mirrorGap=5,
+                    reaction_type=False, param = [1.6, -0.7],n=1,
+                    celllength=1e-5, kdtreeN=5, filmKDTree=np.array([[2, 0], [3, 1]]),weight=-0.2, tstep=1e-5,
+                    substrateTop=bottom,posGeneratorType='top', logname=logname)
     
+
+    cicle = 100
+    celllength=1e-5
+    parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]])
+
+    # for i in range(cicle):
+    step1 = testEtch.inputParticle(etchfilm, parcel, 'maxwell', 0, int(5e4), int(12e7), int(1e5),2, 10, 1)
     #                                               (velGeneratorType, typeID, inputCount, emptyZ=Zgap)
-    maxwell = 'maxwell'
-    cProfile.run('etching1 = testEtch.inputParticle(maxwell, 0, int(1e5),int(1e7), 10)', 'noMirror_cprofile')
+    # maxwell = 'maxwell'
+    # cProfile.run('etching1 = testEtch.inputParticle(maxwell, 0, int(1e5),int(1e7), 10)', 'noMirror_cprofile')
 
     # etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
 
