@@ -749,22 +749,22 @@ if __name__ == "__main__":
     maskBottom = 2.6
     maskDeep = 2.808
 
-    diameter = 120
+    diameter = 60
     maskUp_sim = maskUp/maskBottom*diameter
     maskDeep_sim = maskDeep/maskBottom*diameter
 
-    film = np.zeros((200, 200, 250, 3))
+    film = np.zeros((100, 100, 200, 3))
 
     bottom = 100
     height = bottom + int(maskDeep_sim)
 
     density = 10
 
-    sphere = np.ones((200, 200, 250), dtype=bool)
+    sphere = np.ones((100, 100, 200), dtype=bool)
 
-    diameter = 120
+    diameter = 60
 
-    center = 100
+    center = 50
     for k in range(int(diameter/2 - int(maskUp_sim/2))):
         # print(diameter/2 - k)
         radius = diameter/2 - k
@@ -781,15 +781,52 @@ if __name__ == "__main__":
     film[:, :, 0:bottom, 1] = 0 # bottom
     film[:, :, 0:bottom, 2] = 0 # bottom
 
+    # maskUp = 2.09
+    # maskBottom = 2.6
+    # maskDeep = 2.808
+
+    # diameter = 120
+    # maskUp_sim = maskUp/maskBottom*diameter
+    # maskDeep_sim = maskDeep/maskBottom*diameter
+
+    # film = np.zeros((200, 200, 250, 3))
+
+    # bottom = 100
+    # height = bottom + int(maskDeep_sim)
+
+    # density = 10
+
+    # sphere = np.ones((200, 200, 250), dtype=bool)
+
+    # diameter = 120
+
+    # center = 100
+    # for k in range(int(diameter/2 - int(maskUp_sim/2))):
+    #     # print(diameter/2 - k)
+    #     radius = diameter/2 - k
+    #     # print('deep', int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k))
+    #     bottom_step = int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k)
+    #     for i in range(sphere.shape[0]):
+    #         for j in range(sphere.shape[1]):
+    #             if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
+    #                 sphere[i, j, bottom_step:bottom_step+int(maskDeep_sim/(diameter/2 - maskUp_sim/2))] = 0
+
+    # film[sphere, 2] = density
+    # film[:, :, height:, :] = 0
+    # film[:, :, 0:bottom, 0] = density # bottom
+    # film[:, :, 0:bottom, 1] = 0 # bottom
+    # film[:, :, 0:bottom, 2] = 0 # bottom
+
+
     etchfilm = film
 
     logname = 'Multi_species_benchmark_1021_hole_ratio01'
 
     testEtch = etching(inputMethod='bunch', depo_or_etching='etching', 
                     etchingPoint = np.array([center, center, bottom-30]),depoPoint = np.array([center, center, bottom-30]),
-                    density=density, center_with_direction=np.array([[100,100,150]]), 
-                    range3D=np.array([[0, 200, 0, 200, 0, 250]]), InOrOut=[1], yield_hist=np.array([None]),
-                    maskTop=40, maskBottom=98, maskStep=10, maskCenter=[100, 100],backup=False, 
+                    density=density, center_with_direction=np.array([[int(etchfilm.shape[0]/2),int(etchfilm.shape[1]/2),150]]), 
+                    range3D=np.array([[0, etchfilm.shape[0], 0, etchfilm.shape[1], 0, etchfilm.shape[2]]]), InOrOut=[1], yield_hist=np.array([None]),
+                    maskTop=40, maskBottom=98, maskStep=10, maskCenter=[int(etchfilm.shape[0]/2), int(etchfilm.shape[1]/2)],backup=False, 
                     mirrorGap=5,
                     reaction_type=False, param = [1.6, -0.7],n=1,
                     celllength=1e-5, kdtreeN=5, filmKDTree=np.array([[2, 0], [3, 1]]),weight=-0.2, tstep=1e-5,
@@ -799,9 +836,11 @@ if __name__ == "__main__":
     cicle = 100
     celllength=1e-5
     parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]])
-
+    # parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]], order='F')
     # for i in range(cicle):
     step1 = testEtch.inputParticle(etchfilm, parcel, 'maxwell', 0, int(5e4), int(12e7), int(1e5),2, 10, 1)
+
+    np.save('./bosch_data_1022_timeit/bosch_sf_step_test_Ar', etchfilm)
     #                                               (velGeneratorType, typeID, inputCount, emptyZ=Zgap)
     # maxwell = 'maxwell'
     # cProfile.run('etching1 = testEtch.inputParticle(maxwell, 0, int(1e5),int(1e7), 10)', 'noMirror_cprofile')

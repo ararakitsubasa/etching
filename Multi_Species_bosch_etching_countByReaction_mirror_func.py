@@ -378,6 +378,8 @@ class etching(surface_normal):
         i, j, k = self.get_indices()
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] != 0)
+        reactListAll = np.ones(indice_inject.shape[0])*-2
+        oscilationList = np.zeros_like(indice_inject, dtype=np.bool_)
 
         if np.any(indice_inject):
             pos_1, vel_1 = self.get_positions_and_velocities(indice_inject)
@@ -385,7 +387,7 @@ class etching(surface_normal):
 
             film_update_results = self.update_film(get_plane, get_theta, indice_inject, ddi, dl1, ddshape, maxdd)
 
-            self.handle_surface_depo(film_update_results, pos_1, sumFilm, indice_inject)
+            self.handle_surface_depo(film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
 
             return film_update_results['depo_count'], ddshape, maxdd, ddi, dl1
         else:
@@ -430,43 +432,22 @@ class etching(surface_normal):
         }
         return results
 
-    # def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject):
-    #     depo_parcel = film_update_results['depo_parcel']
-        
-    #     for type in self.filmKDTree:
-    #         if np.any(depo_parcel == type[0]):
-    #             surface_depo = np.array(self.film[:,:,:, type[1]] > 0)
-    #             self.update_surface_mirror(surface_depo)
+    def toKDtree(self):
+        return cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
 
-    #             surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
-    #             to_depo = np.where(depo_parcel == type[0])[0]
-
-    #             pos_1[:, 0] += self.mirrorGap * self.celllength
-    #             pos_1[:, 1] += self.mirrorGap * self.celllength
-    #             dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=32)
-    #             surface_indice = np.argwhere(self.surface_depo_mirror == True)
-
-    #             self.distribute_depo(surface_indice, ii, dd, type)
-
-    #             if self.depo_or_etching == 'depo':
-    #                 surface_film = np.array(self.film[:, :, :, type[1]] >= 11)
-    #                 self.film[surface_film, type[1]] = self.density
-    #             elif self.depo_or_etching == 'etching':
-    #                 surface_film = np.array(self.film[:,:,:,type[1]] < 9)
-    #                 self.film[surface_film, type[1]] = 0
-
-    def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject):
+    def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
 
         for type in self.filmKDTree:
             # Check if the depo_parcel matches the current type
-            if self.check_depo_parcel(depo_parcel, type):
+            if np.any(depo_parcel == type[0]):
                 
                 # Process surface deposition
-                surface_depo = self.process_surface_depo(type)
+                self.process_surface_depo(type)
 
                 # Build surface KDTree
-                surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
+                # surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
+                surface_tree = self.toKDtree()
                 
                 # Query the KDTree for neighbors
                 ii, dd, surface_indice = self.query_surface_tree(surface_tree, pos_1, depo_parcel, type)
@@ -477,15 +458,22 @@ class etching(surface_normal):
                 # Handle deposition or etching
                 self.handle_deposition_or_etching(type)
 
-    def check_depo_parcel(self, depo_parcel, type):
-        # Check if any depo_parcel matches the type
-        return np.any(depo_parcel == type[0])
+        reactListAll[indice_inject] = reactList
+        oscilationList[indice_inject] = oscilation_indice
+
+        if np.any(reactListAll != -1):
+            indice_inject[np.where(reactListAll == -1)] = False
+            indice_inject[oscilationList == True] = False
+            self.parcel = self.parcel[~indice_inject]
+    # def check_depo_parcel(self, depo_parcel, type):
+    #     # Check if any depo_parcel matches the type
+    #     return np.any(depo_parcel == type[0])
 
     def process_surface_depo(self, type):
         # Generate surface deposition mask
         surface_depo = np.array(self.film[:, :, :, type[1]] > 0)
         self.update_surface_mirror(surface_depo)
-        return surface_depo
+        # return surface_depo
 
     def query_surface_tree(self, surface_tree, pos_1, depo_parcel, type):
         # Adjust positions for mirror and query nearest neighbors
@@ -536,11 +524,6 @@ class etching(surface_normal):
             indiceYMin = j1 < 0
             j1[indiceYMax] -= self.cellSizeY
             j1[indiceYMin] += self.cellSizeY
-            # Correct indices and ensure integer type
-            # i1, j1 = self.correct_indices(i1, j1)
-            # i1 = np.round(i1).astype(int)
-            # j1 = np.round(j1).astype(int)
-            # k1 = np.round(k1).astype(int)
 
             self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum
 
@@ -890,6 +873,43 @@ if __name__ == "__main__":
     film[:, :, 0:bottom, 0] = density # bottom
     film[:, :, 0:bottom, 1] = 0 # bottom
     film[:, :, 0:bottom, 2] = 0 # bottom
+
+    # maskUp = 2.09
+    # maskBottom = 2.6
+    # maskDeep = 2.808
+
+    # diameter = 120
+    # maskUp_sim = maskUp/maskBottom*diameter
+    # maskDeep_sim = maskDeep/maskBottom*diameter
+
+    # film = np.zeros((200, 200, 250, 3))
+
+    # bottom = 100
+    # height = bottom + int(maskDeep_sim)
+
+    # density = 10
+
+    # sphere = np.ones((200, 200, 250), dtype=bool)
+
+    # diameter = 120
+
+    # center = 100
+    # for k in range(int(diameter/2 - int(maskUp_sim/2))):
+    #     # print(diameter/2 - k)
+    #     radius = diameter/2 - k
+    #     # print('deep', int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k))
+    #     bottom_step = int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k)
+    #     for i in range(sphere.shape[0]):
+    #         for j in range(sphere.shape[1]):
+    #             if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
+    #                 sphere[i, j, bottom_step:bottom_step+int(maskDeep_sim/(diameter/2 - maskUp_sim/2))] = 0
+
+    # film[sphere, 2] = density
+    # film[:, :, height:, :] = 0
+    # film[:, :, 0:bottom, 0] = density # bottom
+    # film[:, :, 0:bottom, 1] = 0 # bottom
+    # film[:, :, 0:bottom, 2] = 0 # bottom
+
 
     etchfilm = film
 
