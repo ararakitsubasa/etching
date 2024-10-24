@@ -9,7 +9,7 @@ from Collision import transport
 class depo(transport):
     def __init__(self, mirror, collision, velNormalize, pressure_pa, temperature, chamberSize, DXsec,
                  param, TS, N, sub_xy, film, n, cellSize, celllength, kdtreeN, 
-                 tstep, thickness,substrateTop, posGeneratorType, logname):
+                 tstep, thickness,substrateTop, posGeneratorType, logname, nozzle_list):
         super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize, DXsec)
         self.symmetry = mirror
         self.collider = collision
@@ -30,7 +30,7 @@ class depo(transport):
         self.N = N
         self.T = 300
         self.Cm = (2*1.380649e-23*self.T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
-
+        self.nozzle_list = nozzle_list
         self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
         self.indepoThick = substrateTop
@@ -252,8 +252,10 @@ class depo(transport):
                 v1 = p2v2[0][1]
                 film_1 = p2v2[2]
                 nozzle_5 = np.array([277-184-2, 50, 120-6])
-                if np.any(film_1[nozzle_5[0], nozzle_5[1], self.depoThick]) != 0:
-                    print('depo finish')
+                # if np.any(film_1[nozzle_5[0], nozzle_5[1], self.depoThick]) != 0:
+                #     print('depo finish')
+                #     break
+                if self.nozzle_fill(film_1):
                     break
 
                 weights_arr_1 = p2v2[3]
@@ -296,7 +298,14 @@ class depo(transport):
         self.substrate = film_1
         return film_1, collList, elist, filmThickness, self.filmDensity
     
-    
+    def nozzle_fill(self, film_1):
+        nozzle_list = self.nozzle_list
+        for nozzle in range(nozzle_list.shape[0]):
+            if np.any(film_1[int(nozzle_list[nozzle, 0]), int(nozzle_list[nozzle, 1]), int(nozzle_list[nozzle, 2])]) != 0:
+                print('depo finish')
+                return True
+            else:
+                return False
     # def posGenerator(self, IN, thickness, emptyZ):
     #     position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
     #                                 np.random.rand(IN)*self.cellSizeY, \

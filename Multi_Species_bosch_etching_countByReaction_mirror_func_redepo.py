@@ -5,7 +5,7 @@ import time as Time
 from tqdm import tqdm
 import logging
 # from Collision import transport
-from surface_normalize_bosch import surface_normal
+from surface_normalize_etching_depo import surface_normal
 from numba import jit, prange
 from boundary import boundary
 import torch
@@ -127,15 +127,15 @@ def reaction_yield(parcel, film, theta):
             reactList[i] = react_choice
             react_type = react_type_table[int(parcel[i, -1]), react_choice]
 
-            if react_type == 2:
+            if react_type == 2: # kdtree Si-SF
                 depo_parcel[i] = 2
-            elif react_type == 3:
+            elif react_type == 3: # kdtree Ar-c4f8
                 depo_parcel[i] = 3
-            elif react_type == 1:
+            elif react_type == 1: # +
                 depo_parcel[i] = 1
-            elif react_type == 4:
+            elif react_type == 4: # Ar - Si
                 depo_parcel[i] = 4
-            elif react_type == 0:
+            elif react_type == 0:  # no reaction
                 depo_parcel[i] = 0
 
     for i in prange(parcel.shape[0]):
@@ -245,7 +245,7 @@ class etching(surface_normal):
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
         surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
-                                maskTop, maskBottom, maskStep, maskCenter, backup)
+                                maskTop, maskBottom, maskStep, maskCenter, backup, density)
         self.param = param # n beta
         self.kdtreeN = kdtreeN
         self.celllength = celllength
@@ -268,7 +268,7 @@ class etching(surface_normal):
         # filmKDTree=np.array([[2, 0], [3, 1]])
         #       KDTree    [depo_parcel,  film]
         self.mirrorGap = mirrorGap
-        # self.surface_depo_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
+        # self.surface_etching_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
         self.reaction_type = reaction_type
         self.posGeneratorType = posGeneratorType
         self.substrateTop = substrateTop
@@ -377,7 +377,8 @@ class etching(surface_normal):
     def etching_film(self):
         i, j, k = self.get_indices()
         sumFilm = np.sum(self.film, axis=-1)
-        indice_inject = np.array(sumFilm[i, j, k] != 0)
+        # indice_inject = np.array(sumFilm[i, j, k] != 0) # etching
+        indice_inject = np.array(sumFilm[i, j, k] >= 1) # depo
         reactListAll = np.ones(indice_inject.shape[0])*-2
         oscilationList = np.zeros_like(indice_inject, dtype=np.bool_)
 
@@ -433,7 +434,7 @@ class etching(surface_normal):
         return results
 
     def toKDtree(self):
-        return cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
+        return cKDTree(np.argwhere(self.surface_etching_mirror == True) * self.celllength)
 
     def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
@@ -446,7 +447,7 @@ class etching(surface_normal):
                 self.process_surface_depo(type)
 
                 # Build surface KDTree
-                # surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
+                # surface_tree = cKDTree(np.argwhere(self.surface_etching_mirror == True) * self.celllength)
                 surface_tree = self.toKDtree()
                 
                 # Query the KDTree for neighbors
@@ -471,9 +472,10 @@ class etching(surface_normal):
 
     def process_surface_depo(self, type):
         # Generate surface deposition mask
-        surface_depo = np.array(self.film[:, :, :, type[1]] > 0)
-        self.update_surface_mirror(surface_depo)
-        # return surface_depo
+        # surface_etching = np.array(self.film[:, :, :, type[1]] > 0) # etching
+        surface_etching = np.logical_or(self.film[:, :, :, type[1]] == 0, self.film[:, :, :, type[1]] != self.density) #depo
+        self.update_surface_mirror(surface_etching)
+        # return surface_etching
 
     def query_surface_tree(self, surface_tree, pos_1, depo_parcel, type):
         # Adjust positions for mirror and query nearest neighbors
@@ -481,28 +483,28 @@ class etching(surface_normal):
         pos_1[:, 0] += self.mirrorGap * self.celllength
         pos_1[:, 1] += self.mirrorGap * self.celllength
         dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=32)
-        surface_indice = np.argwhere(self.surface_depo_mirror == True)
+        surface_indice = np.argwhere(self.surface_etching_mirror == True)
         return ii, dd, surface_indice
 
     def handle_deposition_or_etching(self, type):
         if self.depo_or_etching == 'depo':
-            surface_film = np.array(self.film[:, :, :, type[1]] >= 11)
+            surface_film = np.array(self.film[:, :, :, type[1]] > 1)
             self.film[surface_film, type[1]] = self.density
         elif self.depo_or_etching == 'etching':
             surface_film = np.array(self.film[:,:,:,type[1]] < 9)
             self.film[surface_film, type[1]] = 0
 
 
-    def update_surface_mirror(self, surface_depo):
-        self.surface_depo_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_depo
-        self.surface_depo_mirror[:self.mirrorGap, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_depo[-self.mirrorGap:, :, :]
-        self.surface_depo_mirror[-self.mirrorGap:, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_depo[:self.mirrorGap, :, :]
-        self.surface_depo_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, :self.mirrorGap, :] = surface_depo[:, -self.mirrorGap:, :]
-        self.surface_depo_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX:, -self.mirrorGap:, :] = surface_depo[:, :self.mirrorGap, :]
-        self.surface_depo_mirror[:self.mirrorGap, :self.mirrorGap, :] = surface_depo[-self.mirrorGap:, -self.mirrorGap:, :]
-        self.surface_depo_mirror[:self.mirrorGap, -self.mirrorGap:, :] = surface_depo[-self.mirrorGap:, :self.mirrorGap, :]
-        self.surface_depo_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_depo[:self.mirrorGap, -self.mirrorGap:, :]
-        self.surface_depo_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_depo[:self.mirrorGap, :self.mirrorGap, :]
+    def update_surface_mirror(self, surface_etching):
+        self.surface_etching_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching
+        self.surface_etching_mirror[:self.mirrorGap, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching[-self.mirrorGap:, :, :]
+        self.surface_etching_mirror[-self.mirrorGap:, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching[:self.mirrorGap, :, :]
+        self.surface_etching_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, :self.mirrorGap, :] = surface_etching[:, -self.mirrorGap:, :]
+        self.surface_etching_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX:, -self.mirrorGap:, :] = surface_etching[:, :self.mirrorGap, :]
+        self.surface_etching_mirror[:self.mirrorGap, :self.mirrorGap, :] = surface_etching[-self.mirrorGap:, -self.mirrorGap:, :]
+        self.surface_etching_mirror[:self.mirrorGap, -self.mirrorGap:, :] = surface_etching[-self.mirrorGap:, :self.mirrorGap, :]
+        self.surface_etching_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_etching[:self.mirrorGap, -self.mirrorGap:, :]
+        self.surface_etching_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_etching[:self.mirrorGap, :self.mirrorGap, :]
 
     def distribute_depo(self, surface_indice, ii, dd, type):
         ddsum = np.sum(dd, axis=1)
@@ -822,8 +824,8 @@ class etching(surface_normal):
         self.cellSizeX = self.film.shape[0]
         self.cellSizeY = self.film.shape[1]
         self.cellSizeZ = self.film.shape[2]
-        self.surface_depo_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
-        print(self.surface_depo_mirror.shape)
+        self.surface_etching_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
+        print(self.surface_etching_mirror.shape)
         self.log.info('circle step:{}'.format(step))
         result =  self.runEtch(velGeneratorType, typeID, inputCount,runningCount, max_react_count, Zgap, step)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
