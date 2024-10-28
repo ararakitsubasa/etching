@@ -166,35 +166,35 @@ def reemission(vel, normal):
         # UN[i] = U
     return UN
 
-# @jit(nopython=True)
-# def boundary(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
-#     # Adjust X dimension
-#     indiceXMax = parcel[:, 6] >= cellSizeX
-#     indiceXMin = parcel[:, 6] < 0
+@jit(nopython=True)
+def boundaryNumba(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
+    # Adjust X dimension
+    indiceXMax = parcel[:, 6] >= cellSizeX
+    indiceXMin = parcel[:, 6] < 0
 
-#     parcel[indiceXMax, 6] -= cellSizeX
-#     parcel[indiceXMax, 0] -= celllength * cellSizeX
+    parcel[indiceXMax, 6] -= cellSizeX
+    parcel[indiceXMax, 0] -= celllength * cellSizeX
 
-#     parcel[indiceXMin, 6] += cellSizeX
-#     parcel[indiceXMin, 0] += celllength * cellSizeX
+    parcel[indiceXMin, 6] += cellSizeX
+    parcel[indiceXMin, 0] += celllength * cellSizeX
 
-#     # Adjust Y dimension
-#     indiceYMax = parcel[:, 7] >= cellSizeY
-#     indiceYMin = parcel[:, 7] < 0
+    # Adjust Y dimension
+    indiceYMax = parcel[:, 7] >= cellSizeY
+    indiceYMin = parcel[:, 7] < 0
 
-#     parcel[indiceYMax, 7] -= cellSizeY
-#     parcel[indiceYMax, 1] -= celllength * cellSizeY
+    parcel[indiceYMax, 7] -= cellSizeY
+    parcel[indiceYMax, 1] -= celllength * cellSizeY
 
-#     parcel[indiceYMin, 7] += cellSizeY
-#     parcel[indiceYMin, 1] += celllength * cellSizeY
+    parcel[indiceYMin, 7] += cellSizeY
+    parcel[indiceYMin, 1] += celllength * cellSizeY
 
-#     # Check if any particles are outside bounds in any direction
-#     indices = (parcel[:, 6] >= cellSizeX) | (parcel[:, 6] < 0) | \
-#               (parcel[:, 7] >= cellSizeY) | (parcel[:, 7] < 0) | \
-#               (parcel[:, 8] >= cellSizeZ) | (parcel[:, 8] < 0)
+    # Check if any particles are outside bounds in any direction
+    indices = (parcel[:, 6] >= cellSizeX) | (parcel[:, 6] < 0) | \
+              (parcel[:, 7] >= cellSizeY) | (parcel[:, 7] < 0) | \
+              (parcel[:, 8] >= cellSizeZ) | (parcel[:, 8] < 0)
 
-#     # Remove particles outside the boundary
-#     return parcel[~indices]
+    # Remove particles outside the boundary
+    return parcel[~indices]
 
 
 @jit(nopython=True)
@@ -374,6 +374,51 @@ class etching(surface_normal):
         # 将孤立的单元格设为0
         self.film[condition, :] = 0
 
+    # def scanZ(film): # fast scanZ
+    #     xshape, yshape, zshape, layer = film.shape
+    #     filmC = film[:,:,:,0]
+    #     # 初始化一个全零的表面稀疏张量
+    #     surface_sparse = np.zeros((xshape, yshape, zshape))
+        
+    #     # 获取当前平面与前后平面的布尔索引
+    #     current_plane = np.sum(film, axis=-1) == 0
+
+    #     # 获取周围邻居的布尔索引
+    #     neighbors = np.zeros_like(filmC, dtype=np.bool_)
+        
+    #     neighbors[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面
+    #     neighbors[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面
+    #     neighbors[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边
+    #     neighbors[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边
+    #     neighbors[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面
+    #     neighbors[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面
+        
+    #     # 获取满足条件的索引
+    #     condition = current_plane & neighbors
+        
+    #     # 更新表面稀疏张量
+    #     surface_sparse[condition] = 1
+        
+    #     return surface_sparse
+
+    # def depoFloat(self):
+    #     plane_point = scanZ(self.film)
+
+    #     plane_tree = cKDTree(np.argwhere(plane_point == 1))
+    #     Float_point = getFloat_pointcloud(self.film)
+
+    #     dd, ii = plane_tree.query(Float_point, k=1, workers=1)
+    #     surface_indice = np.argwhere(plane_point)
+    #     i1 = surface_indice[ii][:,0] #[particle, order, xyz]
+    #     j1 = surface_indice[ii][:,1]
+    #     k1 = surface_indice[ii][:,2]
+
+    #     Float_point = Float_point.numpy()
+    #     self.film[i1, j1, k1, 1] += 20
+    #     self.film[Float_point[:, 0],Float_point[:, 1],Float_point[:, 2],1] = 30
+
+        # return film
+
     def etching_film(self):
         i, j, k = self.get_indices()
         sumFilm = np.sum(self.film, axis=-1)
@@ -538,40 +583,23 @@ class etching(surface_normal):
         return i1, j1
 
     def toboundary(self):
-        self.parcel = boundary(self.parcel, self.cellSizeX, self.cellSizeY, self.cellSizeZ, self.celllength)
-      
+        # self.parcel = boundary(self.parcel, self.cellSizeX, self.cellSizeY, self.cellSizeZ, self.celllength)
+        self.parcel = boundaryNumba(self.parcel, self.cellSizeX, self.cellSizeY, self.cellSizeZ, self.celllength)
+
     def toupdate_parcel(self, tStep):
         self.parcel = update_parcel(self.parcel, self.celllength, tStep)
 
     def getAcc_depo(self, tStep):
 
-        # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
-
-        # print('bf bound',self.parcel.flags.f_contiguous)
         self.toboundary()
-        # self.parcel = boundary(self.parcel, self.cellSizeX, self.cellSizeY, self.cellSizeZ, self.celllength)
-        # print('af bound',self.parcel.flags.f_contiguous)
-        self.removeFloat()
+
+        # self.removeFloat()
         self.removeFloatPolymer()
-        # print(pos_cp)
-        # print('bf bound',self.parcel.flags.f_contiguous)
+
         depo_count, ddshape, maxdd, ddi, dl1 = self.etching_film()
-        # print('bf bound',self.parcel.flags.f_contiguous)
-        # self.parcel = update_parcel(self.parcel, self.celllength, tStep)
+
         self.toupdate_parcel(tStep)
-        # print('af bound',self.parcel.flags.f_contiguous)
-        # 预计算 1/self.celllength，避免重复计算
-        # inv_celllength = 1.0 / self.celllength
 
-        # # 更新位置
-        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep
-
-        # # 使用 np.rint() 进行取整，然后整体转换为整数类型，减少 .astype() 调用
-        # # ijk = np.rint((self.parcel[:, :3] * inv_celllength) + 0.5).astype(int)
-        # ijk = np.rint((self.parcel[:, :3] * inv_celllength)).astype(int)
-        # # 一次性赋值给 parcel 的第 6、7、8 列
-        # self.parcel[:, 6:9] = ijk
-        # print('af bound',self.parcel.flags.f_contiguous)
         return depo_count, ddshape, maxdd, ddi, dl1 #, film_max, surface_true
 
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
@@ -717,7 +745,7 @@ class etching(surface_normal):
                 # self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
                 #               .format(i, tstep, depo_count, count_reaction, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
-
+        self.removeFloat()
         return self.film, filmThickness, self.parcel
     
     def posGenerator(self, IN, thickness, emptyZ):

@@ -33,37 +33,29 @@ class surface_normal:
     
     def scanZ(self, film): # fast scanZ
         film = torch.Tensor(film)
-        xshape, yshape, zshape = film.shape
-        
-        # 初始化一个全零的表面稀疏张量
-        surface_sparse = torch.zeros((xshape, yshape, zshape))
-        
-        # 获取当前平面与前后平面的布尔索引
-        # current_plane = film != 0
-        current_plane = film >= self.filmDensity - 1
-        # 获取周围邻居的布尔索引
-        neighbors = torch.zeros_like(film, dtype=torch.bool)
-        
-        neighbors[1:, :, :] |= film[:-1, :, :] <= 1  # 上面
-        neighbors[:-1, :, :] |= film[1:, :, :] <= 1  # 下面
-        neighbors[:, 1:, :] |= film[:, :-1, :] <= 1  # 左边
-        neighbors[:, :-1, :] |= film[:, 1:, :] <= 1  # 右边
-        neighbors[:, :, 1:] |= film[:, :, :-1] <= 1  # 前面
-        neighbors[:, :, :-1] |= film[:, :, 1:] <= 1  # 后面
 
-        # neighbors[1:, :, :] |= film[:-1, :, :] == 0  # 上面
-        # neighbors[:-1, :, :] |= film[1:, :, :] == 0  # 下面
-        # neighbors[:, 1:, :] |= film[:, :-1, :] == 0  # 左边
-        # neighbors[:, :-1, :] |= film[:, 1:, :] == 0  # 右边
-        # neighbors[:, :, 1:] |= film[:, :, :-1] == 0  # 前面
-        # neighbors[:, :, :-1] |= film[:, :, 1:] == 0  # 后面
+        # 初始化一个全零的表面稀疏张量
+        surface_sparse_depo = torch.zeros_like(film)
+
+        # depo
+        current_plane_depo = film >= self.filmDensity - 1 # 9
+        # 获取周围邻居的布尔索引
+        neighbors_depo = torch.zeros_like(film, dtype=torch.bool)
+        
+        neighbors_depo[1:, :, :] |= film[:-1, :, :] <= 1  # 上面
+        neighbors_depo[:-1, :, :] |= film[1:, :, :] <= 1  # 下面
+        neighbors_depo[:, 1:, :] |= film[:, :-1, :] <= 1  # 左边
+        neighbors_depo[:, :-1, :] |= film[:, 1:, :] <= 1  # 右边
+        neighbors_depo[:, :, 1:] |= film[:, :, :-1] <= 1  # 前面
+        neighbors_depo[:, :, :-1] |= film[:, :, 1:] <= 1  # 后面
+
         # 获取满足条件的索引
-        condition = current_plane & neighbors
+        condition_depo = current_plane_depo & neighbors_depo
 
         # 更新表面稀疏张量
-        surface_sparse[condition] = 1
+        surface_sparse_depo[condition_depo] = 1
 
-        return surface_sparse.to_sparse()
+        return surface_sparse_depo.to_sparse()
       
     # def scanZ(self, film): # fast scanZ
     #     film = torch.Tensor(film)
