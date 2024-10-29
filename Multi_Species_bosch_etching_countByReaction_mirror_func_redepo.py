@@ -374,51 +374,96 @@ class etching(surface_normal):
         # 将孤立的单元格设为0
         self.film[condition, :] = 0
 
-    def scanDepoFloat(self): # fast scanZ
+    # def scanDepoFloat(self): # fast scanZ
+    #     film = torch.Tensor(self.film)
+    #     sumFilm = torch.sum(film, axis=-1)
+    #     # sumFilm = torch.Tensor(sumFilm)
+
+    #     filmC = film[:,:,:,0]
+    #     # 初始化一个全零的表面稀疏张量
+    #     surface_sparse = torch.zeros_like(sumFilm)
+    #     # surface_Float = torch.zeros_like(sumFilm)
+    #     surface_Float_depo = torch.zeros_like(sumFilm)
+
+    #     # 获取当前平面与前后平面的布尔索引
+    #     current_plane = sumFilm == 0
+    #     # current_Float = film[:,:,:,1] != 0
+    #     current_Float_depo = torch.logical_and(film[:,:,:,0] > 0, film[:,:,:,0] < 1)
+
+    #     # 获取周围邻居的布尔索引
+    #     neighbors_plane = torch.zeros_like(filmC, dtype=torch.bool)
+        
+    #     neighbors_plane[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面
+    #     neighbors_plane[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面
+    #     neighbors_plane[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边
+    #     neighbors_plane[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边
+    #     neighbors_plane[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面
+    #     neighbors_plane[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面
+        
+    #     # 获取满足条件的索引
+    #     condition = current_plane & neighbors_plane
+    #     # condition_float = current_Float & ~neighbors_plane
+    #     condition_float_depo = current_Float_depo & ~neighbors_plane
+
+    #     # 更新表面稀疏张量
+    #     surface_sparse[condition] = 1
+    #     # surface_Float[condition_float] = 1
+    #     surface_Float_depo[condition_float_depo] = 1
+
+    #     # points_float_poly = surface_Float.to_sparse().indices().T
+    #     points_float_depo = surface_Float_depo.to_sparse().indices().T
+
+    #     return surface_sparse.numpy(), points_float_depo
+        # return surface_sparse.numpy(), points_float_poly, points_float_depo
+
+    def scanDepoFloat(self, type): # fast scanZ
         film = torch.Tensor(self.film)
         sumFilm = torch.sum(film, axis=-1)
         # sumFilm = torch.Tensor(sumFilm)
 
-        filmC = film[:,:,:,0]
+        filmC = film[:,:,:,type[1]]
         # 初始化一个全零的表面稀疏张量
         surface_sparse = torch.zeros_like(sumFilm)
-        # surface_Float = torch.zeros_like(sumFilm)
-        surface_Float_depo = torch.zeros_like(sumFilm)
+        surface_Float = torch.zeros_like(sumFilm)
 
         # 获取当前平面与前后平面的布尔索引
         current_plane = sumFilm == 0
-        # current_Float = film[:,:,:,1] != 0
-        current_Float_depo = torch.logical_and(film[:,:,:,0] > 0, film[:,:,:,0] < 1)
-
+        current_Float = torch.logical_and(film[:,:,:,type[1]] > 0, film[:,:,:,type[1]] < 1)
+        # print(current_Float)
         # 获取周围邻居的布尔索引
         neighbors_plane = torch.zeros_like(filmC, dtype=torch.bool)
         
-        neighbors_plane[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面
-        neighbors_plane[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面
-        neighbors_plane[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边
-        neighbors_plane[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边
-        neighbors_plane[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面
-        neighbors_plane[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面
+        neighbors_plane[1:, :, :] |= filmC[:-1, :, :] >= 9  # 上面
+        neighbors_plane[:-1, :, :] |= filmC[1:, :, :] >= 9  # 下面
+        neighbors_plane[:, 1:, :] |= filmC[:, :-1, :] >= 9  # 左边
+        neighbors_plane[:, :-1, :] |= filmC[:, 1:, :] >= 9  # 右边
+        neighbors_plane[:, :, 1:] |= filmC[:, :, :-1] >= 9  # 前面
+        neighbors_plane[:, :, :-1] |= filmC[:, :, 1:] >= 9  # 后面
+
+        # 获取周围邻居的布尔索引
+        neighbors_float = torch.zeros_like(filmC, dtype=torch.bool)
+        
+        neighbors_float[1:, :, :] |= filmC[:-1, :, :] == 0  # 上面
+        neighbors_float[:-1, :, :] |= filmC[1:, :, :] == 0  # 下面
+        neighbors_float[:, 1:, :] |= filmC[:, :-1, :] == 0  # 左边
+        neighbors_float[:, :-1, :] |= filmC[:, 1:, :] == 0  # 右边
+        neighbors_float[:, :, 1:] |= filmC[:, :, :-1] == 0  # 前面
+        neighbors_float[:, :, :-1] |= filmC[:, :, 1:] == 0  # 后面
         
         # 获取满足条件的索引
         condition = current_plane & neighbors_plane
-        # condition_float = current_Float & ~neighbors_plane
-        condition_float_depo = current_Float_depo & ~neighbors_plane
-
+        condition_float = current_Float & neighbors_float
         # 更新表面稀疏张量
         surface_sparse[condition] = 1
-        # surface_Float[condition_float] = 1
-        surface_Float_depo[condition_float_depo] = 1
+        surface_Float[condition_float] = 1
 
-        # points_float_poly = surface_Float.to_sparse().indices().T
-        points_float_depo = surface_Float_depo.to_sparse().indices().T
+        points = surface_Float.to_sparse().indices().T
 
-        return surface_sparse.numpy(), points_float_depo
-        # return surface_sparse.numpy(), points_float_poly, points_float_depo
+        return surface_sparse.numpy(), points
 
-    def depoFloat(self):
+    def depoFloat(self, type):
         # plane_point, Float_point, points_float_depo = self.scanDepoFloat()
-        plane_point, Float_point, = self.scanDepoFloat()
+        plane_point, Float_point = self.scanDepoFloat(type)
 
         plane_tree = cKDTree(np.argwhere(plane_point == 1))
 
@@ -430,8 +475,8 @@ class etching(surface_normal):
         k1 = surface_indice[ii][:,2]
 
         Float_point = Float_point.numpy()
-        self.film[i1, j1, k1, 0] += self.film[Float_point[:, 0],Float_point[:, 1],Float_point[:, 2],0]
-
+        self.film[i1, j1, k1, type[1]] += self.film[Float_point[:, 0],Float_point[:, 1],Float_point[:, 2],type[1]]
+        self.film[Float_point[:, 0],Float_point[:, 1],Float_point[:, 2],type[1]] = 0
         # self.film[Float_point[:, 0],Float_point[:, 1],Float_point[:, 2],1] = 0
         # return film
 
@@ -534,8 +579,10 @@ class etching(surface_normal):
 
     def process_surface_depo(self, type):
         # Generate surface deposition mask
-        # surface_etching = np.array(self.film[:, :, :, type[1]] > 0) # etching
-        surface_etching = np.logical_or(self.film[:, :, :, type[1]] == 0, self.film[:, :, :, type[1]] != self.density) #depo
+        if type[2] == -1:
+            surface_etching = np.array(self.film[:, :, :, type[1]] > 1) # etching
+        elif type[2] == 1:
+            surface_etching = np.logical_or(self.film[:, :, :, type[1]] == 0, self.film[:, :, :, type[1]] != self.density) #depo
         self.update_surface_mirror(surface_etching)
         # return surface_etching
 
@@ -564,7 +611,7 @@ class etching(surface_normal):
         surface_film_etching = np.logical_and(self.film[:,:,:,type[1]] < 9, self.film[:,:,:,type[1]] > 8)
         if np.any(surface_film_etching):
             self.film[surface_film_etching, type[1]] = 0
-            self.depoFloat()
+            self.depoFloat(type)
 
     def update_surface_mirror(self, surface_etching):
         self.surface_etching_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching
@@ -598,7 +645,10 @@ class etching(surface_normal):
             j1[indiceYMax] -= self.cellSizeY
             j1[indiceYMin] += self.cellSizeY
 
-            self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum
+            if type[2] == 1:
+                self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum # depo
+            elif type[2] == -1:
+                self.film[i1, j1, k1, type[1]] -= self.weight * dd[:, kdi] / ddsum  # etching
 
 
     def correct_indices(self, i1, j1):
@@ -650,22 +700,7 @@ class etching(surface_normal):
         self.parcel = np.concatenate((self.parcel, parcelIn))
         # print(self.parcel.flags)
 
-    def runEtch(self, velGeneratorType, typeID, inputCount, runningCount, max_react_count, emptyZ, step):
-
-        self.log.info('inputType:{}'.format(typeID))
-        # if step == 0:
-        #     self.parcel = np.zeros((1, 10))
-        # tmax = time
-        start_time = Time.time()
-        tstep = self.timeStep
-        t = 0
-        # inputCount = int(v0.shape[0]/(tmax/tstep))
-
-        self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
-        count_reaction = 0
-        inputAll = 0
-        filmThickness = self.substrateTop
-
+    def posvelGenerator(self, velGeneratorType):
         if self.posGeneratorType == 'full':
             self.log.info('using posGenerator_full')
             posGenerator = self.posGenerator_full
@@ -684,7 +719,45 @@ class etching(surface_normal):
             velGenerator = self.velGenerator_maxwell_normal
         elif velGeneratorType == 'updown':
             self.log.info('using velGenerator_updown')
-            velGenerator = self.velGenerator_updown_normal
+            velGenerator = self.velGenerator_updown_normal      
+        return posGenerator, velGenerator  
+
+    def runEtch(self, velGeneratorType, typeID, inputCount, runningCount, max_react_count, emptyZ, step):
+
+        self.log.info('inputType:{}'.format(typeID))
+        # if step == 0:
+        #     self.parcel = np.zeros((1, 10))
+        # tmax = time
+        start_time = Time.time()
+        tstep = self.timeStep
+        t = 0
+        # inputCount = int(v0.shape[0]/(tmax/tstep))
+
+        self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+        count_reaction = 0
+        inputAll = 0
+        filmThickness = self.substrateTop
+
+        # if self.posGeneratorType == 'full':
+        #     self.log.info('using posGenerator_full')
+        #     posGenerator = self.posGenerator_full
+        # elif self.posGeneratorType == 'top':
+        #     self.log.info('using posGenerator_top')
+        #     posGenerator = self.posGenerator_top
+        # elif self.posGeneratorType == 'benchmark':
+        #     self.log.info('using posGenerator_benchmark')
+        #     posGenerator = self.posGenerator_benchmark
+        # else:
+        #     self.log.info('using posGenerator')
+        #     posGenerator = self.posGenerator 
+
+        # if velGeneratorType == 'maxwell':
+        #     self.log.info('using velGenerator_maxwell')
+        #     velGenerator = self.velGenerator_maxwell_normal
+        # elif velGeneratorType == 'updown':
+        #     self.log.info('using velGenerator_updown')
+        #     velGenerator = self.velGenerator_updown_normal
+        posGenerator, velGenerator = self.posvelGenerator(velGeneratorType)
 
         p1 = posGenerator(inputCount, filmThickness, emptyZ)
         v1 = velGenerator(inputCount)
