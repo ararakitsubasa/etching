@@ -491,11 +491,11 @@ class etching(surface_normal):
 
         if np.any(indice_inject):
             pos_1, vel_1 = self.get_positions_and_velocities(indice_inject)
-            get_plane, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice = self.calculate_injection(pos_1, vel_1, sumFilm)
+            get_plane, etch_yield, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice = self.calculate_injection(pos_1, vel_1, sumFilm)
 
             film_update_results = self.update_film(get_plane, get_theta, indice_inject, ddi, dl1, ddshape, maxdd)
 
-            self.handle_surface_depo(film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
+            self.handle_surface_depo(film_update_results, etch_yield, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
 
             return film_update_results['depo_count'], ddshape, maxdd, ddi, dl1
         else:
@@ -522,8 +522,8 @@ class etching(surface_normal):
 
     def calculate_injection(self, pos_1, vel_1, sumFilm):
         self.planes = self.get_pointcloud(sumFilm)
-        get_plane, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4, oscilation_indice = self.get_inject_normal(self.planes, pos_1, vel_1)
-        return get_plane, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice
+        get_plane, etch_yield, get_theta, ddshape, maxdd, ddi, dl1, pos1e4, vel1e4, oscilation_indice = self.get_inject_normal(self.planes, pos_1, vel_1)
+        return get_plane, etch_yield, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice
 
     def update_film(self, get_plane, get_theta, indice_inject, ddi, dl1, ddshape, maxdd):
         self.film[get_plane[:,0], get_plane[:,1], get_plane[:,2]], self.parcel[indice_inject, :], reactList, depo_parcel = \
@@ -543,12 +543,13 @@ class etching(surface_normal):
     def toKDtree(self):
         return cKDTree(np.argwhere(self.surface_etching_mirror == True) * self.celllength)
 
-    def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
+    def handle_surface_depo(self, film_update_results, etch_yield, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
 
         for type in self.filmKDTree:
             # Check if the depo_parcel matches the current type
-            if np.any(depo_parcel == type[0]):
+            react_classify = depo_parcel == type[0]
+            if np.any(react_classify):
                 
                 # Process surface deposition
                 self.process_surface_depo(type)
@@ -561,7 +562,7 @@ class etching(surface_normal):
                 ii, dd, surface_indice = self.query_surface_tree(surface_tree, pos_1, depo_parcel, type)
 
                 # Distribute deposition
-                self.distribute_depo(surface_indice, ii, dd, type)
+                self.distribute_depo(surface_indice, ii, dd, type, etch_yield[react_classify])
 
                 # Handle deposition or etching
                 self.handle_deposition_or_etching(type)
@@ -624,7 +625,7 @@ class etching(surface_normal):
         self.surface_etching_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_etching[:self.mirrorGap, -self.mirrorGap:, :]
         self.surface_etching_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_etching[:self.mirrorGap, :self.mirrorGap, :]
 
-    def distribute_depo(self, surface_indice, ii, dd, type):
+    def distribute_depo(self, surface_indice, ii, dd, type, etch_yield):
         ddsum = np.sum(dd, axis=1)
 
         for kdi in range(self.kdtreeN):
@@ -648,7 +649,7 @@ class etching(surface_normal):
             if type[2] == 1:
                 self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum # depo
             elif type[2] == -1:
-                self.film[i1, j1, k1, type[1]] -= self.weight * dd[:, kdi] / ddsum  # etching
+                self.film[i1, j1, k1, type[1]] -= self.weight * etch_yield * dd[:, kdi] / ddsum  # etching
 
 
     def correct_indices(self, i1, j1):

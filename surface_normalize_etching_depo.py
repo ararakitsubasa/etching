@@ -206,36 +206,38 @@ class surface_normal:
         i = 0
         # indice_all = np.zeros_like(pos.shape[0], dtype=np.bool_)
         dd, ii = plane_tree.query(pos, k=1, workers=1)
-        indice_all = np.zeros_like(dd, dtype=np.bool_)
+        # indice_all = np.zeros_like(dd, dtype=np.bool_)
         oscilation_indice = np.zeros_like(dd, dtype=np.bool_)
-        dd_back = np.copy(dd)
-        ii_back = np.copy(ii)
-        indice_all[dd>2e-5] = True
-        if self.backup == True:
-            # pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
-            # dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
-            # oscilation = dd[indice_all] - dd_back[indice_all]
-            # oscilation_indice[indice_all] = oscilation < 0
-            # indice_all[oscilation_indice] = False
-            # indice_all[dd_back<=2e-5] = False
-            # print('oscilation:{}'.format(np.sum(oscilation_indice)))
-            while np.any(indice_all == True):
-                i += 1
-                pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
-                dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
-                oscilation = dd[indice_all] - dd_back[indice_all]
-                oscilation_indice[indice_all] = oscilation < 0
-                indice_all[oscilation_indice] = False
-                # print('i:{},  oscilation_indice:{}, oscilation:{}'.format(i, np.sum(oscilation_indice), np.sum(oscilation < 0)))
-                # indice_all[oscilation_indice] = False
-                dd = np.copy(dd_back)
-                ii = np.copy(ii_back)
-                indice_all[dd<=2e-5] = False
-
+        # dd_back = np.copy(dd)
+        # ii_back = np.copy(ii)
+        # indice_all[dd>2e-5] = True
+        # if self.backup == True:
+        #     # pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
+        #     # dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
+        #     # oscilation = dd[indice_all] - dd_back[indice_all]
+        #     # oscilation_indice[indice_all] = oscilation < 0
+        #     # indice_all[oscilation_indice] = False
+        #     # indice_all[dd_back<=2e-5] = False
+        #     # print('oscilation:{}'.format(np.sum(oscilation_indice)))
+        #     while np.any(indice_all == True):
+        #         i += 1
+        #         pos[indice_all, :] -= vel[indice_all, :]*self.celllength/2
+        #         dd_back[indice_all], ii_back[indice_all] = plane_tree.query(pos[indice_all], k=1, workers=1)
+        #         oscilation = dd[indice_all] - dd_back[indice_all]
+        #         oscilation_indice[indice_all] = oscilation < 0
+        #         indice_all[oscilation_indice] = False
+        #         # print('i:{},  oscilation_indice:{}, oscilation:{}'.format(i, np.sum(oscilation_indice), np.sum(oscilation < 0)))
+        #         # indice_all[oscilation_indice] = False
+        #         dd = np.copy(dd_back)
+        #         ii = np.copy(ii_back)
+        #         indice_all[dd<=2e-5] = False
+        dot_products = np.einsum('...i,...i->...', vel, normal[ii])
+        theta = np.arccos(dot_products)
+        etch_yield = self.yield_func(theta)
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5], oscilation_indice
+        return plane_point_int, etch_yield, normal[ii], np.max(dd), np.average(dd), np.sum(dd>2e-5), dd.shape[0], pos[dd>2e-5], vel[dd>2e-5], oscilation_indice
         # return plane_point_int, normal[ii], i, dl1
     
     def get_inject_theta(self, plane, pos, vel):
