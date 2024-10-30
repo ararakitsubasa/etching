@@ -52,53 +52,6 @@ react_type_table = np.array([[2, 0, 0],
                            [1, 0, 0],
                            [4, 3, 1]])
 
-
-# @jit(nopython=True, parallel=True)
-# def reaction_yield(parcel, film, theta):
-#     # print('react parcel', parcel.shape)
-#     # print('react film', film.shape)
-#     # print('react theta', theta.shape)
-#     num_parcels = parcel.shape[0]
-#     num_reactions = react_table.shape[1]
-#     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
-#     reactList = np.ones(parcel.shape[0], dtype=np.int_)*-1
-#     for i in range(num_parcels):
-#         for j in range(num_reactions):
-#             if film[i, j] <= 0:
-#                 choice[i, j] = 1
-#     depo_parcel = np.zeros(parcel.shape[0])
-#     for i in prange(parcel.shape[0]):
-#         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
-#         for j in prange(film.shape[1]):
-#             react_rate = react_table[int(parcel[i, -1]), j, 0]
-#             if react_rate > choice[i, j]:
-#                 acceptList[j] = True
-#         react_choice_indices = np.where(acceptList)[0]
-#         if react_choice_indices.size > 0:
-#             react_choice = np.random.choice(react_choice_indices)
-#             reactList[i] = react_choice
-#             react_type = react_type_table[int(parcel[i, -1]), react_choice]
-#             if react_type == 2: # kdtree Si-SF
-#                 depo_parcel[i] = 2
-#             elif react_type == 3: # kdtree Ar-c4f8
-#                 depo_parcel[i] = 3
-#             elif react_type == 1: # +
-#                 depo_parcel[i] = 1
-#             elif react_type == 4: # Ar - Si
-#                 depo_parcel[i] = 4
-#             elif react_type == 0:  # no reaction
-#                 depo_parcel[i] = 0
-#     for i in prange(parcel.shape[0]):
-#         if depo_parcel[i] == 1:
-#             film[i, :] += react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
-#             # print('chemistry')
-#         if reactList[i] == -1:
-#             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
-#             # print('reflection')
-#             # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
-
-#     return film, parcel, reactList, depo_parcel
-
 @jit(nopython=True, parallel=True)
 def reaction_yield(parcel, film, theta):
     num_parcels = parcel.shape[0]
@@ -155,7 +108,7 @@ kB = 1.380649e-23
 T = 100
 
 @jit(nopython=True)
-def reemission(vel, normal):
+def DiffusionReflect(vel, normal):
     mass = 27*1.66e-27
     Ut = vel - vel@normal*normal
     tw1 = Ut/np.linalg.norm(Ut)
@@ -165,6 +118,27 @@ def reemission(vel, normal):
     UN = U / np.linalg.norm(U)
         # UN[i] = U
     return UN
+
+@jit(nopython=True)
+def reemission_multi(vel, normal):
+    vels = np.zeros_like(vel)
+    for i in range(vels.shape[0]):
+        # vels[i] = DiffusionReflect(vel[i], normal[i])
+        vels[i] = SpecularReflect(vel[i], normal[i])
+    return vels
+
+@jit(nopython=True)
+def redepo_Generator_numba(i, j, k, vel, normal):
+    poses = np.array([i, j, k]).T
+    vels = reemission_multi(vel, normal)
+    typeID = np.zeros(vel.shape[0]) # 0 for Al depo
+    for n in range(10):
+        poses = np.concatenate((poses, poses))
+        vels = np.concatenate((vels, vels))
+        typeID = np.concatenate((typeID, typeID))
+    return poses, vels, typeID
+
+    # self.Parcelgen(poses, vels, typeID)
 
 @jit(nopython=True)
 def boundaryNumba(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
@@ -374,48 +348,6 @@ class etching(surface_normal):
         # 将孤立的单元格设为0
         self.film[condition, :] = 0
 
-    # def scanDepoFloat(self): # fast scanZ
-    #     film = torch.Tensor(self.film)
-    #     sumFilm = torch.sum(film, axis=-1)
-    #     # sumFilm = torch.Tensor(sumFilm)
-
-    #     filmC = film[:,:,:,0]
-    #     # 初始化一个全零的表面稀疏张量
-    #     surface_sparse = torch.zeros_like(sumFilm)
-    #     # surface_Float = torch.zeros_like(sumFilm)
-    #     surface_Float_depo = torch.zeros_like(sumFilm)
-
-    #     # 获取当前平面与前后平面的布尔索引
-    #     current_plane = sumFilm == 0
-    #     # current_Float = film[:,:,:,1] != 0
-    #     current_Float_depo = torch.logical_and(film[:,:,:,0] > 0, film[:,:,:,0] < 1)
-
-    #     # 获取周围邻居的布尔索引
-    #     neighbors_plane = torch.zeros_like(filmC, dtype=torch.bool)
-        
-    #     neighbors_plane[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面
-    #     neighbors_plane[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面
-    #     neighbors_plane[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边
-    #     neighbors_plane[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边
-    #     neighbors_plane[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面
-    #     neighbors_plane[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面
-        
-    #     # 获取满足条件的索引
-    #     condition = current_plane & neighbors_plane
-    #     # condition_float = current_Float & ~neighbors_plane
-    #     condition_float_depo = current_Float_depo & ~neighbors_plane
-
-    #     # 更新表面稀疏张量
-    #     surface_sparse[condition] = 1
-    #     # surface_Float[condition_float] = 1
-    #     surface_Float_depo[condition_float_depo] = 1
-
-    #     # points_float_poly = surface_Float.to_sparse().indices().T
-    #     points_float_depo = surface_Float_depo.to_sparse().indices().T
-
-    #     return surface_sparse.numpy(), points_float_depo
-        # return surface_sparse.numpy(), points_float_poly, points_float_depo
-
     def scanDepoFloat(self, type): # fast scanZ
         film = torch.Tensor(self.film)
         sumFilm = torch.sum(film, axis=-1)
@@ -495,23 +427,12 @@ class etching(surface_normal):
 
             film_update_results = self.update_film(get_plane, get_theta, indice_inject, ddi, dl1, ddshape, maxdd)
 
-            self.handle_surface_depo(film_update_results, etch_yield, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
+            self.handle_surface_depo(film_update_results, etch_yield, get_theta, pos_1, vel_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
 
             return film_update_results['depo_count'], ddshape, maxdd, ddi, dl1
         else:
             return 0, 0, 0, 0, 0
 
-    # def get_indices(self):
-    #     i = self.parcel[:, 6].astype(int)
-    #     j = self.parcel[:, 7].astype(int)
-    #     k = self.parcel[:, 8].astype(int)
-    #     return i, j, k
-
-    # def get_positions_and_velocities(self, indice_inject):
-    #     pos_1 = self.parcel[indice_inject, :3]
-    #     vel_1 = self.parcel[indice_inject, 3:6]
-    #     return pos_1, vel_1
-    
     def get_indices(self):
         # 直接将切片操作和数据类型转换合并
         return self.parcel[:, 6].astype(int), self.parcel[:, 7].astype(int), self.parcel[:, 8].astype(int)
@@ -543,12 +464,21 @@ class etching(surface_normal):
     def toKDtree(self):
         return cKDTree(np.argwhere(self.surface_etching_mirror == True) * self.celllength)
 
-    def handle_surface_depo(self, film_update_results, etch_yield, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
+    def handle_surface_depo(self, film_update_results, etch_yield, get_theta, pos_1, vel_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
+
+        reactListAll[indice_inject] = reactList
+        oscilationList[indice_inject] = oscilation_indice
+
+        if np.any(reactListAll != -1):
+            indice_inject[np.where(reactListAll == -1)] = False
+            indice_inject[oscilationList == True] = False
+            self.parcel = self.parcel[~indice_inject]
 
         for type in self.filmKDTree:
             # Check if the depo_parcel matches the current type
             react_classify = depo_parcel == type[0]
+            # to_depo = np.where(depo_parcel == type[0])[0]
             if np.any(react_classify):
                 
                 # Process surface deposition
@@ -559,24 +489,21 @@ class etching(surface_normal):
                 surface_tree = self.toKDtree()
                 
                 # Query the KDTree for neighbors
-                ii, dd, surface_indice = self.query_surface_tree(surface_tree, pos_1, depo_parcel, type)
+                ii, dd, surface_indice = self.query_surface_tree(surface_tree, pos_1, react_classify)
 
                 # Distribute deposition
-                self.distribute_depo(surface_indice, ii, dd, type, etch_yield[react_classify])
+                self.distribute_depo(surface_indice, ii, dd, type, etch_yield[react_classify], vel_1[react_classify], get_theta[react_classify])
 
                 # Handle deposition or etching
                 self.handle_deposition_or_etching(type)
 
-        reactListAll[indice_inject] = reactList
-        oscilationList[indice_inject] = oscilation_indice
+        # reactListAll[indice_inject] = reactList
+        # oscilationList[indice_inject] = oscilation_indice
 
-        if np.any(reactListAll != -1):
-            indice_inject[np.where(reactListAll == -1)] = False
-            indice_inject[oscilationList == True] = False
-            self.parcel = self.parcel[~indice_inject]
-    # def check_depo_parcel(self, depo_parcel, type):
-    #     # Check if any depo_parcel matches the type
-    #     return np.any(depo_parcel == type[0])
+        # if np.any(reactListAll != -1):
+        #     indice_inject[np.where(reactListAll == -1)] = False
+        #     indice_inject[oscilationList == True] = False
+        #     self.parcel = self.parcel[~indice_inject]
 
     def process_surface_depo(self, type):
         # Generate surface deposition mask
@@ -587,23 +514,14 @@ class etching(surface_normal):
         self.update_surface_mirror(surface_etching)
         # return surface_etching
 
-    def query_surface_tree(self, surface_tree, pos_1, depo_parcel, type):
+    def query_surface_tree(self, surface_tree, pos_1, to_depo):
         # Adjust positions for mirror and query nearest neighbors
-        to_depo = np.where(depo_parcel == type[0])[0]
+        # to_depo = np.where(depo_parcel == type[0])[0]
         pos_1[:, 0] += self.mirrorGap * self.celllength
         pos_1[:, 1] += self.mirrorGap * self.celllength
         dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=32)
         surface_indice = np.argwhere(self.surface_etching_mirror == True)
         return ii, dd, surface_indice
-
-    # def handle_deposition_or_etching(self, type):
-    #     if self.depo_or_etching == 'depo':
-    #         surface_film = np.array(self.film[:, :, :, type[1]] > 1)
-    #         self.film[surface_film, type[1]] = self.density
-    #     elif self.depo_or_etching == 'etching':
-    #         surface_film = np.array(self.film[:,:,:,type[1]] < 9)
-    #         self.film[surface_film, type[1]] = 0
-    #         # self.depoFloat()
 
     def handle_deposition_or_etching(self, type):
         surface_film_depo = np.logical_and(self.film[:, :, :, type[1]] > 1, self.film[:,:,:,type[1]] < 2)
@@ -625,7 +543,7 @@ class etching(surface_normal):
         self.surface_etching_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_etching[:self.mirrorGap, -self.mirrorGap:, :]
         self.surface_etching_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_etching[:self.mirrorGap, :self.mirrorGap, :]
 
-    def distribute_depo(self, surface_indice, ii, dd, type, etch_yield):
+    def distribute_depo(self, surface_indice, ii, dd, type, etch_yield, vel, normal):
         ddsum = np.sum(dd, axis=1)
 
         for kdi in range(self.kdtreeN):
@@ -650,7 +568,22 @@ class etching(surface_normal):
                 self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum # depo
             elif type[2] == -1:
                 self.film[i1, j1, k1, type[1]] -= self.weight * etch_yield * dd[:, kdi] / ddsum  # etching
+                for n in range(5):
+                    self.redepo_Generator(i1, j1, k1, vel, normal)
 
+    def redepo_Generator(self, i, j, k, vel, normal):
+        poses = np.array([i, j, k]).T
+        vels = reemission_multi(vel, normal)
+        typeID = np.zeros(vel.shape[0]) # 0 for Al depo
+        # poses, vels, typeID = redepo_Generator_numba(i, j, k, vel, normal)
+        self.Parcelgen(poses, vels, typeID)
+
+    # def redepo_Generator(self, i, j, k, vel, normal):
+    #     # poses = np.array([i, j, k]).T
+    #     # vels = reemission_multi(vel, normal)
+    #     # typeID = np.zeros(vel.shape[0]) # 0 for Al depo
+    #     poses, vels, typeID = redepo_Generator_numba(i, j, k, vel, normal)
+    #     self.Parcelgen(poses, vels, typeID)
 
     def correct_indices(self, i1, j1):
         i1[i1 >= self.cellSizeX] -= self.cellSizeX
@@ -739,25 +672,6 @@ class etching(surface_normal):
         inputAll = 0
         filmThickness = self.substrateTop
 
-        # if self.posGeneratorType == 'full':
-        #     self.log.info('using posGenerator_full')
-        #     posGenerator = self.posGenerator_full
-        # elif self.posGeneratorType == 'top':
-        #     self.log.info('using posGenerator_top')
-        #     posGenerator = self.posGenerator_top
-        # elif self.posGeneratorType == 'benchmark':
-        #     self.log.info('using posGenerator_benchmark')
-        #     posGenerator = self.posGenerator_benchmark
-        # else:
-        #     self.log.info('using posGenerator')
-        #     posGenerator = self.posGenerator 
-
-        # if velGeneratorType == 'maxwell':
-        #     self.log.info('using velGenerator_maxwell')
-        #     velGenerator = self.velGenerator_maxwell_normal
-        # elif velGeneratorType == 'updown':
-        #     self.log.info('using velGenerator_updown')
-        #     velGenerator = self.velGenerator_updown_normal
         posGenerator, velGenerator = self.posvelGenerator(velGeneratorType)
 
         p1 = posGenerator(inputCount, filmThickness, emptyZ)
