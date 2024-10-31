@@ -215,7 +215,7 @@ class etching(surface_normal):
                  maskTop, maskBottom, maskStep, maskCenter, backup,#surface_normal
                  mirrorGap, # mirror
                  reaction_type,  #reaction 
-                 param, n, celllength, kdtreeN,filmKDTree,weight,
+                 param, n, celllength, kdtreeN,filmKDTree,weightDepo,weightEtching,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
         surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
@@ -238,7 +238,8 @@ class etching(surface_normal):
 
         # self.film = film
         self.filmKDTree = filmKDTree
-        self.weight = weight
+        self.weightDepo = weightDepo
+        self.weightEtching = weightEtching
         # filmKDTree=np.array([[2, 0], [3, 1]])
         #       KDTree    [depo_parcel,  film]
         self.mirrorGap = mirrorGap
@@ -492,7 +493,7 @@ class etching(surface_normal):
                 ii, dd, surface_indice = self.query_surface_tree(surface_tree, pos_1, react_classify)
 
                 # Distribute deposition
-                self.distribute_depo(surface_indice, ii, dd, type, etch_yield[react_classify], vel_1[react_classify], get_theta[react_classify])
+                self.distribute_depo(surface_indice, ii, dd, type, etch_yield[react_classify], pos_1[react_classify], vel_1[react_classify], get_theta[react_classify])
 
                 # Handle deposition or etching
                 self.handle_deposition_or_etching(type)
@@ -543,7 +544,7 @@ class etching(surface_normal):
         self.surface_etching_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_etching[:self.mirrorGap, -self.mirrorGap:, :]
         self.surface_etching_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_etching[:self.mirrorGap, :self.mirrorGap, :]
 
-    def distribute_depo(self, surface_indice, ii, dd, type, etch_yield, vel, normal):
+    def distribute_depo(self, surface_indice, ii, dd, type, etch_yield, pos, vel, normal):
         ddsum = np.sum(dd, axis=1)
 
         for kdi in range(self.kdtreeN):
@@ -565,18 +566,16 @@ class etching(surface_normal):
             j1[indiceYMin] += self.cellSizeY
 
             if type[2] == 1:
-                self.film[i1, j1, k1, type[1]] += self.weight * dd[:, kdi] / ddsum # depo
+                self.film[i1, j1, k1, type[1]] += self.weightDepo * dd[:, kdi] / ddsum # depo
             elif type[2] == -1:
-                self.film[i1, j1, k1, type[1]] -= self.weight * etch_yield * dd[:, kdi] / ddsum  # etching
-                for n in range(5):
-                    self.redepo_Generator(i1, j1, k1, vel, normal)
+                # self.film[i1, j1, k1, type[1]] -= 0 * etch_yield * dd[:, kdi] / ddsum  # etching
+                self.film[i1, j1, k1, type[1]] -= self.weightEtching * etch_yield * dd[:, kdi] / ddsum  # etching
+                self.redepo_Generator(pos, vel, normal)
 
-    def redepo_Generator(self, i, j, k, vel, normal):
-        poses = np.array([i, j, k]).T
+    def redepo_Generator(self, pos, vel, normal):
         vels = reemission_multi(vel, normal)
         typeID = np.zeros(vel.shape[0]) # 0 for Al depo
-        # poses, vels, typeID = redepo_Generator_numba(i, j, k, vel, normal)
-        self.Parcelgen(poses, vels, typeID)
+        self.Parcelgen(pos, vels, typeID)
 
     # def redepo_Generator(self, i, j, k, vel, normal):
     #     # poses = np.array([i, j, k]).T
@@ -635,6 +634,7 @@ class etching(surface_normal):
         # print(self.parcel.flags)
 
     def posvelGenerator(self, velGeneratorType):
+        # posGeneratorType
         if self.posGeneratorType == 'full':
             self.log.info('using posGenerator_full')
             posGenerator = self.posGenerator_full
@@ -648,12 +648,16 @@ class etching(surface_normal):
             self.log.info('using posGenerator')
             posGenerator = self.posGenerator 
 
+        # velGeneratorType
         if velGeneratorType == 'maxwell':
             self.log.info('using velGenerator_maxwell')
             velGenerator = self.velGenerator_maxwell_normal
         elif velGeneratorType == 'updown':
             self.log.info('using velGenerator_updown')
             velGenerator = self.velGenerator_updown_normal      
+        elif velGeneratorType == 'benchmark':
+            self.log.info('using velGenerator_benchmark')
+            velGenerator = self.velGenerator_benchmark_normal   
         return posGenerator, velGenerator  
 
     def runEtch(self, velGeneratorType, typeID, inputCount, runningCount, max_react_count, emptyZ, step):
@@ -708,18 +712,18 @@ class etching(surface_normal):
                     self.log.info('DataFind---step:{},inputType:{},count_reaction_all:{},inputAll:{}'.format(step,typeID,count_reaction,inputAll))
                     break
 
-                if count_reaction > max_react_count/8 and depo_count < 1:
-                    end_time = Time.time()
+                # if count_reaction > max_react_count/8 and depo_count < 1:
+                #     end_time = Time.time()
 
-                    # 计算运行时间并转换为分钟和秒
-                    elapsed_time = end_time - start_time
-                    minutes = int(elapsed_time // 60)
-                    seconds = int(elapsed_time % 60)
+                #     # 计算运行时间并转换为分钟和秒
+                #     elapsed_time = end_time - start_time
+                #     minutes = int(elapsed_time // 60)
+                #     seconds = int(elapsed_time % 60)
 
-                    # 输出运行时间
-                    self.log.info(f"stop by depo_count run time: {minutes} min {seconds} sec")
-                    self.log.info('DataFind---step:{},inputType:{},count_reaction_all:{},inputAll:{}'.format(step,typeID,count_reaction,inputAll))
-                    break
+                #     # 输出运行时间
+                #     self.log.info(f"stop by depo_count run time: {minutes} min {seconds} sec")
+                #     self.log.info('DataFind---step:{},inputType:{},count_reaction_all:{},inputAll:{}'.format(step,typeID,count_reaction,inputAll))
+                #     break
 
                 vzMax = np.max(self.parcel[:,5])
                 vzMin = np.min(self.parcel[:,5])
@@ -739,8 +743,10 @@ class etching(surface_normal):
                     update_value = current_percentage - previous_percentage  # 计算进度差值
                     pbar.update(update_value)
                     previous_percentage = current_percentage  # 更新上一次的百分比
-                self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{}, input_count:{}, ddi:{}, dl1:{}, ddshape:{}, maxdd:{}'\
-                            .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0], ddi, dl1, ddshape, maxdd))
+
+                gen_redepo = np.sum(self.parcel[:, -1] == 0)
+                self.log.info('particleIn:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},inputAll:{},vzMax:{:.3f},vzMin:{:.3f}, filmThickness:{}, input_count:{}, ddi:{}, dl1:{}, ddshape:{}, maxdd:{}, gen_redepo:{}'\
+                            .format(previous_percentage, tstep, depo_count, count_reaction, inputAll,  vzMax, vzMin,  filmThickness, self.parcel.shape[0], ddi, dl1, ddshape, maxdd, gen_redepo))
             
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
@@ -783,16 +789,10 @@ class etching(surface_normal):
         position_matrix *= self.celllength
         return position_matrix
      
-    # def posGenerator_benchmark(self, IN, thickness, emptyZ):
-    #     position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
-    #                                 np.ones(IN)*self.cellSizeY/2, \
-    #                                 np.ones(IN)*self.cellSizeZ - emptyZ]).T
-    #     position_matrix *= self.celllength
-    #     return position_matrix
     def posGenerator_benchmark(self, IN, thickness, emptyZ):
-        position_matrix = np.array([np.ones(IN)*self.cellSizeX/2, \
-                                    np.ones(IN)*self.cellSizeY/2, \
-                                    np.ones(IN)*self.cellSizeZ - emptyZ]).T
+        position_matrix = np.array([np.random.rand(IN)*20 - 10 + self.cellSizeX/2, \
+                                    np.random.rand(IN)*20 - 10 + self.cellSizeY/2, \
+                                    np.ones(IN)*self.cellSizeZ/2]).T
         position_matrix *= self.celllength
         return position_matrix
     
@@ -819,7 +819,14 @@ class etching(surface_normal):
 
         return velosity_matrix
 
+    def velGenerator_benchmark_normal(self, IN):
+        velosity_matrix = np.zeros((IN, 3))
+        velosity_matrix[:, 0] = 0
+        velosity_matrix[:, 1] = -np.sqrt(2)/2
+        velosity_matrix[:, 2] = -np.sqrt(2)/2
 
+        return velosity_matrix
+    
     # def posGenerator_benchmark(self, IN, thickness, emptyZ):
     #     position_matrix = np.array([np.random.rand(IN)*20 + self.cellSizeX/2, \
     #                                 np.random.rand(IN)*20 + self.cellSizeY/2, \
