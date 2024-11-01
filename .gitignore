@@ -23,6 +23,7 @@ results/
 vcpkg/
 npzData/
 plot/
+cppTest/
 __pycache__/*
 __pycache__/depoSimulator.cpython-311.pyc
 *.pyc
