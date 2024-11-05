@@ -309,18 +309,18 @@ class etching(surface_normal):
     def removeFloat(self):  # fast scanZ
         filmC = self.film[:,:,:,0]
         # 获取当前平面的非零元素布尔索引
-        current_plane = filmC != 0
+        current_plane = filmC >= 0
 
         # 创建一个全是False的布尔数组来存储邻居的检查结果
         neighbors = np.zeros_like(filmC, dtype=bool)
 
         # 检查各个方向的邻居是否为零
-        neighbors[1:, :, :] |= filmC[:-1, :, :] != 0  # 上面的邻居不为0
-        neighbors[:-1, :, :] |= filmC[1:, :, :] != 0  # 下面的邻居不为0
-        neighbors[:, 1:, :] |= filmC[:, :-1, :] != 0  # 左边的邻居不为0
-        neighbors[:, :-1, :] |= filmC[:, 1:, :] != 0  # 右边的邻居不为0
-        neighbors[:, :, 1:] |= filmC[:, :, :-1] != 0  # 前面的邻居不为0
-        neighbors[:, :, :-1] |= filmC[:, :, 1:] != 0  # 后面的邻居不为0
+        neighbors[1:, :, :] |= filmC[:-1, :, :] >= 1  # 上面的邻居不为0
+        neighbors[:-1, :, :] |= filmC[1:, :, :] >= 1  # 下面的邻居不为0
+        neighbors[:, 1:, :] |= filmC[:, :-1, :] >= 1  # 左边的邻居不为0
+        neighbors[:, :-1, :] |= filmC[:, 1:, :] >= 1  # 右边的邻居不为0
+        neighbors[:, :, 1:] |= filmC[:, :, :-1] >= 1  # 前面的邻居不为0
+        neighbors[:, :, :-1] |= filmC[:, :, 1:] >= 1  # 后面的邻居不为0
 
         # 孤立单元格的条件是当前平面元素不为0且所有方向的邻居都为0
         condition = current_plane & ~neighbors
@@ -779,8 +779,8 @@ class etching(surface_normal):
                 # print('af bound',self.parcel.flags.f_contiguous)
                 # self.log.info('runStep:{}, timeStep:{}, depo_count_step:{}, count_reaction_all:{},vzMax:{:.3f},vzMax:{:.3f}, filmThickness:{},  input_count:{}'\
                 #               .format(i, tstep, depo_count, count_reaction, vzMax, vzMin,  filmThickness, self.parcel.shape[0]))
-        # del self.log, self.fh
-                if ti%100 == 0:
+
+                if ti%10 == 0:
                     self.removeFloat()
         return self.film, filmThickness, self.parcel
     
