@@ -144,6 +144,7 @@ def reaction_yield(parcel, film, theta):
 
         if reactList[i] == -1:
             parcel[i, 3:6] = SpecularReflect(parcel[i, 3:6], theta[i])
+            # parcel[i, 3:6] = reemission(parcel[i, 3:6], theta[i])
 
     return film, parcel, reactList, depo_parcel
 
