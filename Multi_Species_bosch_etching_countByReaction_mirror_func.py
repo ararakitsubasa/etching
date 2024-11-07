@@ -436,8 +436,47 @@ class etching(surface_normal):
     def toKDtree(self):
         return cKDTree(np.argwhere(self.surface_depo_mirror == True) * self.celllength)
 
+    def find_surface_vaccum(self, film): # fast scanZ
+        film = torch.Tensor(film)
+        xshape, yshape, zshape = film.shape
+        self.zshape = zshape
+        # 初始化一个全零的表面稀疏张量
+        surface_sparse = torch.zeros((xshape, yshape, zshape))
+        
+        # 获取当前平面与前后平面的布尔索引
+        current_plane = film == 0
+
+        # 获取周围邻居的布尔索引
+        neighbors = torch.zeros_like(film, dtype=torch.bool)
+        
+        neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面
+        neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面
+        neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边
+        neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边
+        neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面
+        neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面
+        
+        # 获取满足条件的索引
+        condition = current_plane & neighbors
+        
+        # 更新表面稀疏张量
+        surface_sparse[condition] = 1
+        
+        return surface_sparse.to_sparse().indices().T.numpy()
+
+    def reflect_pos(self, sumFilm, indice_reflect):
+        surface_vaccum = self.find_surface_vaccum(sumFilm) 
+        surface_vaccum_tree = cKDTree(surface_vaccum*self.celllength)
+
+        # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
+        dd, ii = surface_vaccum_tree.query(self.parcel[indice_reflect, :3] , k=1, workers=1)
+        self.parcel[indice_reflect, :3] =  surface_vaccum[ii]*self.celllength
+        self.parcel[indice_reflect, 6:9] =  surface_vaccum[ii]
+
     def handle_surface_depo(self, film_update_results, pos_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
+        # reactList = film_update_results['reactList']
+        # self.reflect_pos(sumFilm, indice_inject[reactListAll == -1])
 
         for type in self.filmKDTree:
             # Check if the depo_parcel matches the current type
