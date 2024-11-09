@@ -6,7 +6,7 @@ from tqdm import tqdm, trange
 import logging
 from Collision import transport
 from surface_normalize_sf import surface_normal
-from numba import jit
+from numba import jit, prange
 
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[Cu] s  [1,         2]
@@ -19,28 +19,38 @@ from numba import jit
 #react_t g[F, O, ion] s  [1,          2,           3,          4,       5 ,   6,    7,    8,   9,  10]
 #react_t g[F, O, ion] s  [Si,       SiF1,       SiF2,       SiF3,      SiO, SiO2, SiOF, SiOF2, SiO2F,SiO2F2]
 
-react_table3 = np.array([[[0.9, 2], [0.9, 3], [0.9, 4], [0.9, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
-                        [[0.5, 5], [0.0, 0], [0.0, 0], [0.0, 0], [0.5, 6], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0]],
-                        [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
+# react_table3 = np.array([[[0.9, 2], [0.9, 3], [0.9, 4], [0.9, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
+#                         [[0.5, 5], [0.0, 0], [0.0, 0], [0.0, 0], [0.5, 6], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0]],
+#                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
+
+# react_table3 = np.array([[[0.1, 2], [0.1, 3], [0.1, 4], [0.1, -4], [0.5, 7], [0.0, 0], [0.5, 8], [0.0, 0], [0.6, 10], [0.0, 0]],
+#                         [[0.5, 5], [0.0, 0], [0.0, 0], [0.0, 0], [0.5, 6], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0], [0.0, 0]],
+#                         [[0.27, -1], [0.27, -2], [0.27, -3], [0.27, -4], [0.27, -5], [0.27, -6], [0.27, -7], [0.27, -8], [0.27, -9], [0.27, -10]]])
 
 
-# print(react_table3.shape)
+# # print(react_table3.shape)
 
-react_table = np.zeros((3, 10, 11))
+# react_table = np.zeros((3, 10, 11))
 
-for i in range(react_table3.shape[0]):
-    for j in range(react_table3.shape[1]):
-        for k in range(react_table3.shape[2]):
-            react_table[i, j, 0] = react_table3[i, j, 0]
-            react_table[i, j, j+1] = -1
-            react_chem =  int(np.abs(react_table3[i, j, 1]))
-            if react_table3[i, j, 1] > 0:
-                react_plus_min = 1
-            elif react_table3[i, j, 1] < 0:
-                react_plus_min = -1
-            elif react_table3[i, j, 1] == 0:
-                react_plus_min = 0
-            react_table[i, j, react_chem] = react_plus_min
+# for i in range(react_table3.shape[0]):
+#     for j in range(react_table3.shape[1]):
+#         for k in range(react_table3.shape[2]):
+#             react_table[i, j, 0] = react_table3[i, j, 0]
+#             react_table[i, j, j+1] = -1
+#             react_chem =  int(np.abs(react_table3[i, j, 1]))
+#             if react_table3[i, j, 1] > 0:
+#                 react_plus_min = 1
+#             elif react_table3[i, j, 1] < 0:
+#                 react_plus_min = -1
+#             elif react_table3[i, j, 1] == 0:
+#                 react_plus_min = 0
+#             react_table[i, j, react_chem] = react_plus_min
+
+
+react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
+
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
 @jit(nopython=True)
@@ -244,7 +254,7 @@ class etching(surface_normal):
         k = self.parcel[:, 8].astype(int)
         sumFilm = np.sum(self.film, axis=-1)
         indice_inject = np.array(sumFilm[i, j, k] >= 1) 
-
+        reactListAll = np.ones(indice_inject.shape[0])*-2
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
         pos_1 = self.parcel[indice_inject, :3]
@@ -323,14 +333,18 @@ class etching(surface_normal):
         # delete the particle injected into the film
                 self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
-            if np.any(np.where(reactList != -1)[0]):
-                indice_inject[np.where(reactList == -1)[0]] = False
+            reactListAll[indice_inject] = reactList
+            if np.any(reactListAll != -1):
+                indice_inject[np.where(reactListAll == -1)] = False
                 self.parcel = self.parcel[~indice_inject]
+            # if np.any(np.where(reactList != -1)[0]):
+            #     indice_inject[np.where(reactList == -1)[0]] = False
+            #     self.parcel = self.parcel[~indice_inject]
         # delete the particle injected into the film
         # if np.any(indice_inject):
         #     self.parcel = self.parcel[~indice_inject]
 
-            return pos_1.shape[0] #, film_max, np.sum(surface_film)
+            return np.sum(depo_parcel == self.depo_count_type) #, film_max, np.sum(surface_film)
         else:
             return 0
 
@@ -370,7 +384,7 @@ class etching(surface_normal):
         self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
-    def runEtch(self, inputCount, max_react_count, emptyZ):
+    def runEtch(self, inputCount,runningCount, max_react_count, emptyZ):
 
         self.parcel = np.zeros((1, 10))
         # tmax = time
@@ -416,16 +430,19 @@ class etching(surface_normal):
         # print('parcel', self.parcel.shape)
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             previous_percentage = 0
-            while previous_percentage < 100:
+            while self.parcel.shape[0] > 500:
                 depo_count = self.getAcc_depo(tstep, planes)
                 # print('parcel', self.parcel.shape)
                 t += tstep
                 count_reaction += depo_count
-                p1 = posGenerator(inputCount, filmThickness, emptyZ)
-                vel_type = velGenerator(inputCount)
-                v1 = vel_type[:, :3]
-                typeIDIn = vel_type[:, -1]
-                self.Parcelgen(p1, v1, typeIDIn)
+                current_percentage = int(count_reaction / max_react_count * 100)  # 当前百分比
+                if self.parcel.shape[0] < runningCount and current_percentage < 100:
+                    inputAll += inputCount
+                    p1 = posGenerator(inputCount, filmThickness, emptyZ)
+                    vel_type = velGenerator(inputCount)
+                    v1 = vel_type[:, :3]
+                    typeIDIn = vel_type[:, -1]
+                    self.Parcelgen(p1, v1, typeIDIn)
 
                 # if self.inputMethod == 'bunch':
                 #     p1 = posGenerator(inputCount, filmThickness, emptyZ)
@@ -440,22 +457,22 @@ class etching(surface_normal):
                 #     Time.sleep(0.01)
                 #     pbar.update(1)
                 #     i += 1
-                current_percentage = int(count_reaction / max_react_count * 100)  # 当前百分比
-                if current_percentage > previous_percentage:
+                # current_percentage = int(count_reaction / max_react_count * 100)  # 当前百分比
+                if current_percentage > previous_percentage and current_percentage < 100:
                     update_value = current_percentage - previous_percentage  # 计算进度差值
                     pbar.update(update_value)
                     previous_percentage = current_percentage  # 更新上一次的百分比
 
-                # if np.any(self.film[:, :, self.depoThick, 0]) != 0:
-                #     print('depo finish')
-                #     break
+                if current_percentage > 97 and depo_count == 0:
+                    print('depo finish')
+                    break
                 for thick in range(self.film.shape[2]):
                     if np.sum(self.film[:, :, thick, 0]) == 0:
                         filmThickness = thick
                         break
 
-                self.log.info('runStep:{}, timeStep:{}, depo_count:{}, count_reaction:{}, filmThickness:{},  input_count:{}'\
-                              .format(previous_percentage, tstep, depo_count, count_reaction, filmThickness, self.parcel.shape[0]))
+                self.log.info('runStep:{}, timeStep:{},inputAll:{},  depo_count:{}, count_reaction:{}, filmThickness:{},  input_count:{}'\
+                              .format(previous_percentage,inputAll, tstep, depo_count, count_reaction, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
         return self.film, planes
@@ -533,10 +550,11 @@ class etching(surface_normal):
     
 
         # def runEtch(self, inputCount, max_react_count, emptyZ):
-    def inputParticle(self, randomSeed, vel_type_shuffle, inputCount, max_react_count, Zgap):
+    def inputParticle(self, randomSeed, vel_type_shuffle, inputCount,runningCount, max_react_count,depo_count_type, Zgap):
+        self.depo_count_type = depo_count_type
         np.random.seed(randomSeed)
         self.vel_type_shuffle = vel_type_shuffle
-        result =  self.runEtch(inputCount, max_react_count, emptyZ=Zgap)
+        result =  self.runEtch(inputCount,runningCount, max_react_count, emptyZ=Zgap)
         # if np.any(result[0][:, :, self.depoThick]) != 0:
         #     break             
         # del self.log, self.fh 
