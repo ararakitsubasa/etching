@@ -7,7 +7,7 @@ import logging
 # from Collision import transport
 from surface_normalize_bosch import surface_normal
 from numba import jit, prange
-from boundary import boundary
+# from boundary import boundary
 import torch
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[Cu] s  [1,         2]
@@ -167,35 +167,35 @@ def reemission(vel, normal):
         # UN[i] = U
     return UN
 
-# @jit(nopython=True)
-# def boundary(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
-#     # Adjust X dimension
-#     indiceXMax = parcel[:, 6] >= cellSizeX
-#     indiceXMin = parcel[:, 6] < 0
+@jit(nopython=True)
+def boundary(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
+    # Adjust X dimension
+    indiceXMax = parcel[:, 6] >= cellSizeX
+    indiceXMin = parcel[:, 6] < 0
 
-#     parcel[indiceXMax, 6] -= cellSizeX
-#     parcel[indiceXMax, 0] -= celllength * cellSizeX
+    parcel[indiceXMax, 6] -= cellSizeX
+    parcel[indiceXMax, 0] -= celllength * cellSizeX
 
-#     parcel[indiceXMin, 6] += cellSizeX
-#     parcel[indiceXMin, 0] += celllength * cellSizeX
+    parcel[indiceXMin, 6] += cellSizeX
+    parcel[indiceXMin, 0] += celllength * cellSizeX
 
-#     # Adjust Y dimension
-#     indiceYMax = parcel[:, 7] >= cellSizeY
-#     indiceYMin = parcel[:, 7] < 0
+    # Adjust Y dimension
+    indiceYMax = parcel[:, 7] >= cellSizeY
+    indiceYMin = parcel[:, 7] < 0
 
-#     parcel[indiceYMax, 7] -= cellSizeY
-#     parcel[indiceYMax, 1] -= celllength * cellSizeY
+    parcel[indiceYMax, 7] -= cellSizeY
+    parcel[indiceYMax, 1] -= celllength * cellSizeY
 
-#     parcel[indiceYMin, 7] += cellSizeY
-#     parcel[indiceYMin, 1] += celllength * cellSizeY
+    parcel[indiceYMin, 7] += cellSizeY
+    parcel[indiceYMin, 1] += celllength * cellSizeY
 
-#     # Check if any particles are outside bounds in any direction
-#     indices = (parcel[:, 6] >= cellSizeX) | (parcel[:, 6] < 0) | \
-#               (parcel[:, 7] >= cellSizeY) | (parcel[:, 7] < 0) | \
-#               (parcel[:, 8] >= cellSizeZ) | (parcel[:, 8] < 0)
+    # Check if any particles are outside bounds in any direction
+    indices = (parcel[:, 6] >= cellSizeX) | (parcel[:, 6] < 0) | \
+              (parcel[:, 7] >= cellSizeY) | (parcel[:, 7] < 0) | \
+              (parcel[:, 8] >= cellSizeZ) | (parcel[:, 8] < 0)
 
-#     # Remove particles outside the boundary
-#     return parcel[~indices]
+    # Remove particles outside the boundary
+    return parcel[~indices]
 
 
 @jit(nopython=True)
@@ -971,7 +971,7 @@ if __name__ == "__main__":
     parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]])
     # parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]], order='F')
     # for i in range(cicle):
-    step1 = testEtch.inputParticle(etchfilm, parcel, 'maxwell', 0, int(5e4), int(12e7), int(1e5),2, 10, 1)
+    step1 = testEtch.inputParticle(etchfilm, parcel, 'maxwell', 0, int(1e4), int(5e5), int(1e5),2, 10, 1)
 
     np.save('./bosch_data_1022_timeit/bosch_sf_step_test_Ar', etchfilm)
     #                                               (velGeneratorType, typeID, inputCount, emptyZ=Zgap)

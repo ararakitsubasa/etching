@@ -1,6 +1,6 @@
 import numpy as np
 # import cupy as cp
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree
 import time as Time
 from tqdm import tqdm, trange
 import logging
@@ -47,7 +47,7 @@ from numba import jit, prange
 #             react_table[i, j, react_chem] = react_plus_min
 
 
-react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+react_table = np.array([[[0.3, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
@@ -80,8 +80,10 @@ def reaction_yield(parcel, film, theta):
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) > 0:
                 # print('deposition')
                 depo_parcel[i] = 1
-            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) <= 0:
+            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) < 0:
                 depo_parcel[i] = -1
+            if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) == 0:
+                depo_parcel[i] = -2
     for i in range(parcel.shape[0]):
         if depo_parcel[i] == -1:
             film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
@@ -135,6 +137,51 @@ def removeFloat(film):  # fast scanZ
     film[condition] = 0
     
     return film
+
+@jit(nopython=True)
+def boundaryNumba(parcel, cellSizeX, cellSizeY, cellSizeZ, celllength):
+    # Adjust X dimension
+    indiceXMax = parcel[:, 6] >= cellSizeX
+    indiceXMin = parcel[:, 6] < 0
+
+    parcel[indiceXMax, 6] -= cellSizeX
+    parcel[indiceXMax, 0] -= celllength * cellSizeX
+
+    parcel[indiceXMin, 6] += cellSizeX
+    parcel[indiceXMin, 0] += celllength * cellSizeX
+
+    # Adjust Y dimension
+    indiceYMax = parcel[:, 7] >= cellSizeY
+    indiceYMin = parcel[:, 7] < 0
+
+    parcel[indiceYMax, 7] -= cellSizeY
+    parcel[indiceYMax, 1] -= celllength * cellSizeY
+
+    parcel[indiceYMin, 7] += cellSizeY
+    parcel[indiceYMin, 1] += celllength * cellSizeY
+
+    # Check if any particles are outside bounds in any direction
+    indices = (parcel[:, 6] >= cellSizeX) | (parcel[:, 6] < 0) | \
+              (parcel[:, 7] >= cellSizeY) | (parcel[:, 7] < 0) | \
+              (parcel[:, 8] >= cellSizeZ) | (parcel[:, 8] < 0)
+
+    # Remove particles outside the boundary
+    return parcel[~indices]
+
+@jit(nopython=True)
+def update_parcel(parcel, celllength, tStep):
+    # 预计算 1/celllength，避免重复计算
+    inv_celllength = 1.0 / celllength
+
+    # 更新位置：parcel[:, :3] 为位置，parcel[:, 3:6] 为速度
+    parcel[:, :3] += parcel[:, 3:6] * tStep
+
+    # 计算新的 ijk 值并将其直接赋值到 parcel 的第 6、7、8 列
+    # ijk = np.rint((parcel[:, :3] * inv_celllength) + 0.5).astype(np.int32)
+    ijk = np.rint(parcel[:, :3] * inv_celllength).astype(np.int32)
+    parcel[:, 6:9] = ijk
+
+    return parcel
 
 class etching(surface_normal):
     def __init__(self, mirror, inputMethod, pressure_pa, temperature, chamberSize,depoThick, #transport
@@ -247,7 +294,7 @@ class etching(surface_normal):
         
         # return film
 
-    def etching_film(self, planes):
+    def etching_film(self):
 
         i = self.parcel[:, 6].astype(int)
         j = self.parcel[:, 7].astype(int)
@@ -263,8 +310,9 @@ class etching(surface_normal):
         # print('pos1 shape',pos_1.shape[0])
         # print('ijk_1',ijk_1.shape[0])
         # print('parcel_ijk', self.film[ijk_1[0], ijk_1[1],ijk_1[2]].shape)
-        if pos_1.size != 0:
-            get_plane, get_theta = self.get_inject_normal(planes, pos_1, vel_1)
+        if np.any(indice_inject):
+            self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+            get_plane, get_theta = self.get_inject_normal(self.planes, pos_1, vel_1)
 
             # print('get plane', get_plane.shape)
             # print('i[indice_inject]',i[indice_inject].shape)
@@ -286,52 +334,52 @@ class etching(surface_normal):
         # reflect_parcel = SpecularReflect(vel_1[reflect_choice], get_theta[reflect_choice])
 
         # define depo area 
-            surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
+        #     surface_depo = np.logical_and(sumFilm >= 0, sumFilm < 1) 
 
-            # mirror
-            self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
-            self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
-            self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
-            self.surface_depo_mirror[10:10+self.cellSizeX, :10, :] = surface_depo[:, -10:, :]
-            self.surface_depo_mirror[10:10+self.cellSizeX:, -10:, :] = surface_depo[:, :10, :]
-            self.surface_depo_mirror[:10, :10, :] = surface_depo[-10:, -10:, :]
-            self.surface_depo_mirror[:10, -10:, :] = surface_depo[-10:, :10, :]
-            self.surface_depo_mirror[-10:, :10, :] = surface_depo[:10, -10:, :]
-            self.surface_depo_mirror[-10:, -10:, :] = surface_depo[:10, :10, :]
-            # mirror end
+        #     # mirror
+        #     self.surface_depo_mirror[10:10+self.cellSizeX, 10:10+self.cellSizeY, :] = surface_depo
+        #     self.surface_depo_mirror[:10, 10:10+self.cellSizeY, :] = surface_depo[-10:, :, :]
+        #     self.surface_depo_mirror[-10:, 10:10+self.cellSizeY, :] = surface_depo[:10, :, :]
+        #     self.surface_depo_mirror[10:10+self.cellSizeX, :10, :] = surface_depo[:, -10:, :]
+        #     self.surface_depo_mirror[10:10+self.cellSizeX:, -10:, :] = surface_depo[:, :10, :]
+        #     self.surface_depo_mirror[:10, :10, :] = surface_depo[-10:, -10:, :]
+        #     self.surface_depo_mirror[:10, -10:, :] = surface_depo[-10:, :10, :]
+        #     self.surface_depo_mirror[-10:, :10, :] = surface_depo[:10, -10:, :]
+        #     self.surface_depo_mirror[-10:, -10:, :] = surface_depo[:10, :10, :]
+        #     # mirror end
 
-            surface_tree = KDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
+        #     surface_tree = cKDTree(np.argwhere(self.surface_depo_mirror == True)*self.celllength)
 
-            to_depo = np.where(depo_parcel > 0)[0]
-            pos_1[:, 0] += 10*self.celllength
-            pos_1[:, 1] += 10*self.celllength
+        #     to_depo = np.where(depo_parcel > 0)[0]
+        #     pos_1[:, 0] += 10*self.celllength
+        #     pos_1[:, 1] += 10*self.celllength
 
-            # depo for depo_parcel > 0
-            dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=10)
+        #     # depo for depo_parcel > 0
+        #     dd, ii = surface_tree.query(pos_1[to_depo], k=self.kdtreeN, workers=10)
 
-            surface_indice = np.argwhere(self.surface_depo_mirror == True)
+        #     surface_indice = np.argwhere(self.surface_depo_mirror == True)
 
-            ddsum = np.sum(dd, axis=1)
+        #     ddsum = np.sum(dd, axis=1)
 
-            # kdi order
-            for kdi in range(self.kdtreeN):
-                i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
-                j1 = surface_indice[ii][:,kdi,1]
-                k1 = surface_indice[ii][:,kdi,2]
-                i1 -= 10
-                j1 -= 10
-                indiceXMax = i1 >= self.cellSizeX
-                indiceXMin = i1 < 0
-                i1[indiceXMax] -= self.cellSizeX
-                i1[indiceXMin] += self.cellSizeX
+        #     # kdi order
+        #     for kdi in range(self.kdtreeN):
+        #         i1 = surface_indice[ii][:,kdi,0] #[particle, order, xyz]
+        #         j1 = surface_indice[ii][:,kdi,1]
+        #         k1 = surface_indice[ii][:,kdi,2]
+        #         i1 -= 10
+        #         j1 -= 10
+        #         indiceXMax = i1 >= self.cellSizeX
+        #         indiceXMin = i1 < 0
+        #         i1[indiceXMax] -= self.cellSizeX
+        #         i1[indiceXMin] += self.cellSizeX
 
-                indiceYMax = j1 >= self.cellSizeY
-                indiceYMin = j1 < 0
-                j1[indiceYMax] -= self.cellSizeY
-                j1[indiceYMin] += self.cellSizeY
+        #         indiceYMax = j1 >= self.cellSizeY
+        #         indiceYMin = j1 < 0
+        #         j1[indiceYMax] -= self.cellSizeY
+        #         j1[indiceYMin] += self.cellSizeY
 
-        # delete the particle injected into the film
-                self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
+        # # delete the particle injected into the film
+        #         self.film[i1,j1,k1,0] += 0.2*dd[:,kdi]/ddsum
 
             reactListAll[indice_inject] = reactList
             if np.any(reactListAll != -1):
@@ -348,32 +396,35 @@ class etching(surface_normal):
         else:
             return 0
 
-    def getAcc_depo(self, tStep, planes):
+    def getAcc_depo(self, tStep):
 
         # pos, vel, i, j, k, cellSize_x, cellSize_y, cellSize_z,
-        self.boundary()
+        # self.boundary()
+        self.parcel = boundaryNumba(self.parcel, self.cellSizeX, self.cellSizeY, self.cellSizeZ, self.celllength)
         self.removeFloat()
         # print(pos_cp)
-        depo_count = self.etching_film(planes)
-
+        depo_count = self.etching_film()
+        self.parcel = update_parcel(self.parcel, self.celllength, tStep)
         # Npos2_cp = Nvel_cp * tStep_cp + pos_cp
-        self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
-        i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
-        j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
-        k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
-        self.parcel[:, 6] = i
-        self.parcel[:, 7] = j
-        self.parcel[:, 8] = k
+        # self.parcel[:, :3] += self.parcel[:, 3:6] * tStep 
+        # i = np.floor((self.parcel[:, 0]/self.celllength) + 0.5).astype(int)
+        # j = np.floor((self.parcel[:, 1]/self.celllength) + 0.5).astype(int)
+        # k = np.floor((self.parcel[:, 2]/self.celllength) + 0.5).astype(int)
+        # self.parcel[:, 6] = i
+        # self.parcel[:, 7] = j
+        # self.parcel[:, 8] = k
 
         return depo_count #, film_max, surface_true
 
     # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
     def Parcelgen(self, pos, vel, typeID):
 
-        i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
-        j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
-        k = np.floor((pos[:, 2]/self.celllength) + 0.5).astype(int)
-
+        # i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
+        # j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
+        # k = np.floor((pos[:, 2]/self.celllength) + 0.5).astype(int)
+        i = np.floor((pos[:, 0]/self.celllength)).astype(int)
+        j = np.floor((pos[:, 1]/self.celllength)).astype(int)
+        k = np.floor((pos[:, 2]/self.celllength)).astype(int)
         parcelIn = np.zeros((pos.shape[0], 10))
         parcelIn[:, :3] = pos
         parcelIn[:, 3:6] = vel
@@ -392,7 +443,7 @@ class etching(surface_normal):
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
 
-        planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+        self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
         count_reaction = 0
         inputAll = 0
         filmThickness = self.substrateTop
@@ -431,7 +482,7 @@ class etching(surface_normal):
         with tqdm(total=100, desc='running', leave=True, ncols=100, unit='B', unit_scale=True) as pbar:
             previous_percentage = 0
             while self.parcel.shape[0] > 500:
-                depo_count = self.getAcc_depo(tstep, planes)
+                depo_count = self.getAcc_depo(tstep)
                 # print('parcel', self.parcel.shape)
                 t += tstep
                 count_reaction += depo_count
@@ -451,7 +502,7 @@ class etching(surface_normal):
                 #         typeIDIn = typeID[inputCount*int(t/tstep):inputCount*(int(t/tstep)+1)]
                 #         self.Parcelgen(p1, v1, typeIDIn)
 
-                planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+                # planes = self.get_pointcloud(np.sum(self.film, axis=-1))
 
                 # if int(t/tmax*100) > i:
                 #     Time.sleep(0.01)
@@ -463,19 +514,19 @@ class etching(surface_normal):
                     pbar.update(update_value)
                     previous_percentage = current_percentage  # 更新上一次的百分比
 
-                if current_percentage > 97 and depo_count == 0:
+                if current_percentage > 97 and depo_count <= 20:
                     print('depo finish')
                     break
                 for thick in range(self.film.shape[2]):
-                    if np.sum(self.film[:, :, thick, 0]) == 0:
+                    if np.sum(self.film[int(self.cellSizeX/2),int(self.cellSizeY/2), thick, :]) == 0:
                         filmThickness = thick
                         break
 
                 self.log.info('runStep:{}, timeStep:{},inputAll:{},  depo_count:{}, count_reaction:{}, filmThickness:{},  input_count:{}'\
-                              .format(previous_percentage,inputAll, tstep, depo_count, count_reaction, filmThickness, self.parcel.shape[0]))
+                              .format(previous_percentage,tstep,inputAll, depo_count, count_reaction, filmThickness, self.parcel.shape[0]))
         # del self.log, self.fh
 
-        return self.film, planes
+        return self.film, self.planes
     
     def posGenerator(self, IN, thickness, emptyZ):
         position_matrix = np.array([np.random.rand(IN)*self.cellSizeX, \
@@ -609,12 +660,20 @@ class etching(surface_normal):
     
 
 if __name__ == "__main__":
-    import pyvista as pv
-    import torch
-    film = np.zeros((100, 100, 100, 10))
 
-    bottom = 80
-    film[:, :, 0:bottom, 0] = 10 # bottom
+    film = np.zeros((20, 100, 140, 2))
+
+    bottom = 100
+    height = 104
+
+    density = 10
+
+    center = 50
+
+    film[:, :45, bottom:height, 1] = density
+    film[:, 55:, bottom:height, 1] = density
+    # film[:, :, 0:bottom, :] = 0
+    film[:, :, 0:bottom, 0] = density # bottom
 
     # height = 80
 
@@ -622,71 +681,50 @@ if __name__ == "__main__":
     # film[:, 60:, 0:height, 0] = 10
     etchfilm = film
 
+    T = 300
+    Cm = (2*1.380649e-23*T/(27*1.66e-27) )**0.5 # (2kT/m)**0.5 27 for the Al
 
-    N = int(1e6)
+    def max_velocity_u( random1, random2):
+        return Cm*np.sqrt(-np.log(random1))*(np.cos(2*np.pi*random2))
+
+    def max_velocity_w( random1, random2):
+        return Cm*np.sqrt(-np.log(random1))*(np.sin(2*np.pi*random2))
+
+    def max_velocity_v( random3):
+        return -Cm*np.sqrt(-np.log(random3))
+
+    N = int(1e7)
     velosity_matrix = np.zeros((N, 3))
-    tstep=1e-5
-    celllength=1e-5
-    # velosity_matrix[:, 0] = -1 * celllength /tstep
-    # velosity_matrix[:, 1] = -1 * celllength /tstep
-    velosity_matrix[:, 2] = -1 * celllength /tstep
+
+    Random1 = np.random.rand(N)
+    Random2 = np.random.rand(N)
+    Random3 = np.random.rand(N)
+    velosity_matrix = np.array([max_velocity_u(Random1, Random2), \
+                                max_velocity_w(Random1, Random2), \
+                                    max_velocity_v(Random3)]).T
+
+    energy = np.linalg.norm(velosity_matrix, axis=1)
+    velosity_matrix[:,0] = np.divide(velosity_matrix[:,0], energy)
+    velosity_matrix[:,1] = np.divide(velosity_matrix[:,1], energy)
+    velosity_matrix[:,2] = np.divide(velosity_matrix[:,2], energy)
 
     typeID = np.zeros(N)
 
-    print(velosity_matrix[0])
+
+    vel_type_shuffle = np.zeros((N, 4))
+    vel_type_shuffle[:, :3] = velosity_matrix
+    vel_type_shuffle[:, -1] = typeID
+
+    np.random.shuffle(vel_type_shuffle)
 
     logname = 'Multi_species_benchmark_0729'
     testEtch = etching(mirror=True,inputMethod='bunch', pressure_pa=0.001, temperature=300, chamberSize=etchfilm.shape,
-                        depoThick=90, center_with_direction=np.array([[35,100,75]]), 
-                        range3D=np.array([[0, 70, 0, 100, 0, 150]]), InOrOut=[1], yield_hist=np.array([None]),
-                        reaction_type=False, param = [1.6, -0.7], N = 300000, 
-                        sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
-                        celllength=1e-5, kdtreeN=5, tstep=1e-5,
-                        substrateTop=40,posGeneratorType='benchmark', logname=logname)
+                                            depoThick=120, center_with_direction=np.array([[etchfilm.shape[0]/2,center,75]]), 
+                                            range3D=np.array([[0, etchfilm.shape[0], 0, etchfilm.shape[1], 0, etchfilm.shape[2]]]), InOrOut=[1], yield_hist=np.array([None]),
+                                            reaction_type=False, param = [1.6, -0.7], N = 300000, 
+                                            sub_xy=[0,0], film=etchfilm, n=1, cellSize=etchfilm.shape, 
+                                            celllength=1e-5, kdtreeN=5, tstep=1e-5,
+                                            substrateTop=40,posGeneratorType='top', logname=logname)
 
 
-    etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
-
-    sumFilm = np.sum(etching1[0], axis=-1)
-
-    # depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
-    # depo1 = depo1.indices().numpy().T
-
-    # substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
-    # substrute = substrute.indices().numpy().T
-    # depomesh = pv.PolyData(depo1)
-    # depomesh["radius"] = np.ones(depo1.shape[0])*0.5
-    # geom = pv.Box()
-
-    # submesh = pv.PolyData(substrute)
-    # submesh["radius"] = np.ones(substrute.shape[0])*0.5
-
-    # # Progress bar is a new feature on master branch
-    # depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-    # subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-
-    # p = pv.Plotter()
-    # # p.add_mesh(depoglyphed, color='cyan')
-    # p.add_mesh(subglyphed, color='dimgray')
-    # p.enable_eye_dome_lighting()
-    # p.show()
-
-
-    point_cloud = pv.PolyData(etching1[1][:, 3:])
-    vectors = etching1[1][:, :3]
-
-    point_cloud['vectors'] = vectors
-    arrows = point_cloud.glyph(
-        orient='vectors',
-        scale=1000,
-        factor=2,
-    )
-
-    # Display the arrows
-    plotter = pv.Plotter()
-    plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
-    # plotter.add_mesh(arrows, color='lightblue')
-    # plotter.add_point_labels([point_cloud.center,], ['Center',],
-    #                          point_color='yellow', point_size=20)
-    plotter.show_grid()
-    plotter.show()
+    etching = testEtch.inputParticle(125,vel_type_shuffle,int(1e4),int(5e5),int(1e6),-1, 5)
