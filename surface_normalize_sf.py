@@ -139,6 +139,39 @@ class surface_normal:
 
         return planes_consist
 
+    def update_pointcloud(self, planes, film, indice):
+
+        surface_tree = cKDTree(points)
+        dd, ii = surface_tree.query(points, k=18, workers=5)
+
+        pointsNP = points.numpy()
+
+        # 计算所有点的均值
+        knn_pts = pointsNP[ii]
+        xmn = np.mean(knn_pts[:, :, 0], axis=1)
+        ymn = np.mean(knn_pts[:, :, 1], axis=1)
+        zmn = np.mean(knn_pts[:, :, 2], axis=1)
+
+        c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
+
+        # 计算协方差矩阵
+        cov = np.einsum('...ij,...ik->...jk', c, c)
+
+        # 单值分解 (SVD)
+        u, s, vh = np.linalg.svd(cov)
+
+        # 选择最小特征值对应的特征向量
+        minevindex = np.argmin(s, axis=1)
+        normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
+
+        # 生成平面矩阵
+        planes = np.hstack((normal_all, pointsNP))
+
+        # 调用 normalconsistency_3D_real 方法
+        planes_consist = self.normalconsistency_3D_real(planes)
+
+        return planes_consist
+
     def get_inject_normal(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
         plane_point = plane[:, 3:6]
