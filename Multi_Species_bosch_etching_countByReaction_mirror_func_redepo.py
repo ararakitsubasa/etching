@@ -109,8 +109,9 @@ rn_angle = np.arange(0, np.pi/2, 0.1)
 # xnew = np.array([])
 rn_prob = [Rn_coeffcient(0.9423, 0.9434, 2.342, 3.026, i) for i in rn_angle]
 rn_prob /= rn_prob[-1]
-rn_func = interpolate.interp1d(rn_angle, rn_prob, kind='quadratic')
+# rn_func = interpolate.interp1d(rn_angle, rn_prob, kind='quadratic')
 
+# react ratio have to be set to 0.0 for 100% react probability for the following react yield
 
 @jit(nopython=True, parallel=True)
 def reaction_yield(parcel, film, normal):
@@ -133,8 +134,8 @@ def reaction_yield(parcel, film, normal):
             if int(parcel[i, -1]) == 1:
                 dot_product = np.dot(parcel[i, 3:6], normal[i])
                 dot_product = np.abs(dot_product)
-                angle_rad = np.arccos(np.clip(dot_product, 0, 1.0))
-                react_rate = rn_func(angle_rad)
+                angle_rad = np.arccos(dot_product)
+                react_rate = np.interp(angle_rad, rn_angle, rn_prob)
             else:
                 react_rate = react_table[int(parcel[i, -1]), j, 0]
             if react_rate < choice[i, j]:
@@ -640,7 +641,7 @@ class etching(surface_normal):
             elif type[2] == -1:
                 # self.film[i1, j1, k1, type[1]] -= 0 * etch_yield * dd[:, kdi] / ddsum  # etching
                 self.film[i1, j1, k1, type[1]] -= weight * etch_yield * dd[:, kdi] / ddsum  # etching
-                self.redepo_Generator(pos, vel, normal, weight * etch_yield)
+                # self.redepo_Generator(pos, vel, normal, weight * etch_yield)
 
     def redepo_Generator(self, pos, vel, normal, weight):
         # pos[:,0] -= 2*self.mirrorGap*self.celllength
@@ -655,6 +656,11 @@ class etching(surface_normal):
     #     # typeID = np.zeros(vel.shape[0]) # 0 for Al depo
     #     poses, vels, typeID = redepo_Generator_numba(i, j, k, vel, normal)
     #     self.Parcelgen(poses, vels, typeID)
+
+    def cleanMinusFilm(self):
+        indice = self.film[:, :, :, 0] < 0
+        self.film[indice, 0] = 0
+
 
     def correct_indices(self, i1, j1):
         i1[i1 >= self.cellSizeX] -= self.cellSizeX
@@ -857,6 +863,7 @@ class etching(surface_normal):
 
                 if ti%10 == 0:
                     self.removeFloat()
+                    self.cleanMinusFilm()
         return self.film, filmThickness, self.parcel
     
     def posGenerator(self, IN, thickness, emptyZ):
