@@ -47,25 +47,29 @@ from numba import jit, prange
 #             react_table[i, j, react_chem] = react_plus_min
 
 
-react_table = np.array([[[0.3, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+# react_table = np.array([[[0.3, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
+
+
+react_table = np.array([[[1, 1, 0, 0], [1.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
 @jit(nopython=True)
-def reaction_yield(parcel, film, theta, update_film):
-    # print('react parcel', parcel.shape)
-    # print('react film', film.shape)
-    # print('react theta', theta.shape)
+def reaction_yield(parcel, film, film_vaccum, theta, update_film):
+
     num_parcels = parcel.shape[0]
     num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
     reactList = np.ones(parcel.shape[0])*-1
-    for i in range(num_parcels):
-        for j in range(num_reactions):
-            if film[i, j] <= 0:
-                choice[i, j] = 1
+    # for i in range(num_parcels):
+    #     for j in range(num_reactions):
+    #         if film[i, j] <= 0:
+    #             choice[i, j] = 1
+
     depo_parcel = np.zeros(parcel.shape[0])
     for i in range(parcel.shape[0]):
         acceptList = np.zeros(react_table.shape[1], dtype=np.bool_)
@@ -85,17 +89,28 @@ def reaction_yield(parcel, film, theta, update_film):
             if np.sum(react_table[int(parcel[i, -1]), react_choice, 1:]) == 0:
                 depo_parcel[i] = -2
     for i in range(parcel.shape[0]):
-        if depo_parcel[i] == -1:
-            film[i, :] += 1 * react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+        react_add = react_table[int(parcel[i, -1]), int(reactList[i]), 1:]
+        if depo_parcel[i] == -1: # etching
+            film[i, :] += react_add
             if np.all(film[i, :]) == 0:
                 update_film[int(parcel[i, 6]), int(parcel[i, 7]), int(parcel[i, 8])] = True
-            # print('chemistry',film[i])
+
+        if depo_parcel[i] == 1: # depo
+            if np.sum(react_add + film[i, :]) > 10:
+                film_vaccum[i, :] += react_add
+                update_film[int(parcel[i, 6]), int(parcel[i, 7]), int(parcel[i, 8])] = True  
+
+            else:
+                film[i, :] += react_add
+                if np.sum(film[i, :]) == 10:
+                        update_film[int(parcel[i, 6]), int(parcel[i, 7]), int(parcel[i, 8])] = True                
+
         if reactList[i] == -1:
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
             # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
 
-    return film, parcel, update_film, reactList, depo_parcel
+    return film, film_vaccum, parcel, update_film, reactList, depo_parcel
 
 @jit(nopython=True)
 def SpecularReflect(vel, normal):
@@ -302,7 +317,7 @@ class etching(surface_normal):
         j = self.parcel[:, 7].astype(int)
         k = self.parcel[:, 8].astype(int)
         # sumFilm = np.sum(self.film, axis=-1)
-        indice_inject = np.array(self.sumFilm[i, j, k] >= 1) 
+        indice_inject = np.array(self.sumFilm[i, j, k] >= 10) 
         reactListAll = np.ones(indice_inject.shape[0])*-2
         # print('indice inject', indice_inject.shape)
         # if indice_inject.size != 0:
@@ -313,19 +328,21 @@ class etching(surface_normal):
         if np.any(indice_inject):
             # self.planes = self.get_pointcloud(sumFilm)
             self.indice_inject = indice_inject
-            get_plane, get_theta = self.get_inject_normal(self.planes, pos_1, vel_1)
+            get_plane, get_theta, get_plane_vaccum = self.get_inject_normal(self.planes, self.planes_vaccum, pos_1, vel_1)
 
             self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]],\
+            self.film[get_plane_vaccum[:,0], get_plane_vaccum[:,1], get_plane_vaccum[:,2]], \
             self.parcel[indice_inject,:], self.update_film,\
             reactList, depo_parcel = \
             reaction_yield(self.parcel[indice_inject], \
                            self.film[get_plane[:,0], get_plane[:,1],get_plane[:,2]], \
+                           self.film[get_plane_vaccum[:,0], get_plane_vaccum[:,1], get_plane_vaccum[:,2]], \
                            get_theta, self.update_film)
             if np.any(self.update_film):
                 # self.planes = self.update_pointcloud(self.planes, self.film, self.update_film)
                 self.sumFilm = np.sum(self.film, axis=-1)
-                self.planes = self.get_pointcloud(self.sumFilm)
-
+                self.planes, self.planes_vaccum = self.get_pointcloud(self.sumFilm)
+            # self.reactList_debug = reactList
             reactListAll[indice_inject] = reactList
             if np.any(reactListAll != -1):
                 indice_inject[np.where(reactListAll == -1)] = False
@@ -382,7 +399,7 @@ class etching(surface_normal):
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
         self.sumFilm = np.sum(self.film, axis=-1)
-        self.planes = self.get_pointcloud(self.sumFilm)
+        self.planes, self.planes_vaccum = self.get_pointcloud(self.sumFilm)
         count_reaction = 0
         inputAll = 0
         filmThickness = self.substrateTop
