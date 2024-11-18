@@ -37,22 +37,29 @@ from scipy import interpolate
 #                         [[0.800,  -1, 1], [0.0, 0,  0]],
 #                         [[0.1 ,  -1, 0], [0.9  , 0, -1]]])
 
-react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
+# react_table = np.array([[[0.1, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
-# react_table[0, 3, 4] = -2
-# etching act on film, depo need output
+# # react_table[0, 3, 4] = -2
+# # etching act on film, depo need output
 
-# react_type
-#       Si c4f8 mask
-# sf   ([[KD, x, x],
-# c4f8   [+,  x, x],
-# Ar     [+, KD, +]])
+# # react_type
+# #       Si c4f8 mask
+# # sf   ([[KD, x, x],
+# # c4f8   [+,  x, x],
+# # Ar     [+, KD, +]])
 
-react_type_table = np.array([[2, 0, 0],
-                           [1, 0, 0],
-                           [4, 3, 1]])
+# react_type_table = np.array([[2, 0, 0],
+#                            [1, 0, 0],
+#                            [4, 3, 1]])
+
+react_table = np.array([[[1.0, 0, 1], [1.0, 0, 1]],
+                        [[1.00, -1, 0], [1.00, 0, -1]]])
+
+react_type_table = np.array([[2, 0],
+                             [3, 0]])
+
 
 # @jit(nopython=True, parallel=True)
 # def reaction_yield(parcel, film, theta):
@@ -485,19 +492,19 @@ class etching(surface_normal):
 
     def etching_film(self):
         i, j, k = self.get_indices()
-        sumFilm = np.sum(self.film, axis=-1)
+        # self.sumFilm = np.sum(self.film, axis=-1)
         # indice_inject = np.array(sumFilm[i, j, k] != 0) # etching
-        indice_inject = np.array(sumFilm[i, j, k] >= 1) # depo
+        indice_inject = np.array(self.sumFilm[i, j, k] >= 1) # depo
         reactListAll = np.ones(indice_inject.shape[0])*-2
         oscilationList = np.zeros_like(indice_inject, dtype=np.bool_)
 
         if np.any(indice_inject):
             pos_1, vel_1, weight_1 = self.get_positions_velocities_weight(indice_inject)
-            get_plane, etch_yield, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice = self.calculate_injection(pos_1, vel_1, sumFilm)
+            get_plane, etch_yield, get_theta, ddshape, maxdd, ddi, dl1, oscilation_indice = self.calculate_injection(pos_1, vel_1, self.sumFilm)
 
             film_update_results = self.update_film(get_plane, get_theta, indice_inject, ddi, dl1, ddshape, maxdd)
 
-            self.handle_surface_depo(film_update_results, etch_yield, get_theta, pos_1, vel_1, weight_1, sumFilm, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
+            self.handle_surface_depo(film_update_results, etch_yield, get_theta, pos_1, vel_1, weight_1, indice_inject, reactListAll, oscilationList, film_update_results['reactList'], oscilation_indice)
 
             return film_update_results['depo_count'], ddshape, maxdd, ddi, dl1
         else:
@@ -534,7 +541,7 @@ class etching(surface_normal):
     def toKDtree(self):
         return cKDTree(np.argwhere(self.surface_etching_mirror == True) * self.celllength)
 
-    def handle_surface_depo(self, film_update_results, etch_yield, get_theta, pos_1, vel_1, weight_1, sumFilm, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
+    def handle_surface_depo(self, film_update_results, etch_yield, get_theta, pos_1, vel_1, weight_1, indice_inject, reactListAll, oscilationList, reactList, oscilation_indice):
         depo_parcel = film_update_results['depo_parcel']
 
         reactListAll[indice_inject] = reactList
@@ -567,6 +574,8 @@ class etching(surface_normal):
                 # Handle deposition or etching
                 self.handle_deposition_or_etching(type)
 
+        small_weight = self.parcel[:, 9] < 0.1
+        self.parcel = self.parcel[~small_weight]
         # reactListAll[indice_inject] = reactList
         # oscilationList[indice_inject] = oscilation_indice
 
@@ -600,8 +609,13 @@ class etching(surface_normal):
         self.film[surface_film_depo, type[1]] = self.density
 
         surface_film_etching = np.logical_and(self.film[:,:,:,type[1]] < 9, self.film[:,:,:,type[1]] > 8)
+        self.film[surface_film_etching, type[1]] = 0
+
+        if np.any(surface_film_depo) or np.any(surface_film_etching):
+            self.sumFilm = np.sum(self.film, axis=-1)
+            self.planes = self.get_pointcloud(self.sumFilm)
+
         if np.any(surface_film_etching):
-            self.film[surface_film_etching, type[1]] = 0
             self.depoFloat(type)
 
     def update_surface_mirror(self, surface_etching):
@@ -641,13 +655,14 @@ class etching(surface_normal):
             elif type[2] == -1:
                 # self.film[i1, j1, k1, type[1]] -= 0 * etch_yield * dd[:, kdi] / ddsum  # etching
                 self.film[i1, j1, k1, type[1]] -= weight * etch_yield * dd[:, kdi] / ddsum  # etching
-                # self.redepo_Generator(pos, vel, normal, weight * etch_yield)
+                self.redepo_Generator(pos, vel, normal, weight * etch_yield)
 
     def redepo_Generator(self, pos, vel, normal, weight):
         # pos[:,0] -= 2*self.mirrorGap*self.celllength
         # pos[:,1] -= 2*self.mirrorGap*self.celllength
         vels = reemission_multi(vel, normal)
         typeID = np.zeros(vel.shape[0]) # 0 for Al depo
+        pos += vels*self.timeStep*5
         self.Parcelgen(pos, vels, weight, typeID)
 
     # def redepo_Generator(self, i, j, k, vel, normal):
@@ -752,8 +767,8 @@ class etching(surface_normal):
         tstep = self.timeStep
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
-
-        self.planes = self.get_pointcloud(np.sum(self.film, axis=-1))
+        self.sumFilm = np.sum(self.film, axis=-1)
+        self.planes = self.get_pointcloud(self.sumFilm)
         count_reaction = 0
         inputAll = 0
         filmThickness = self.substrateTop
@@ -1000,149 +1015,153 @@ if __name__ == "__main__":
     import cProfile
 
 
-    maskUp = 2.09
-    maskBottom = 2.6
-    maskDeep = 2.808
+    def slide2D_fractionZ(film, start, end, direction, fraction, value):
+        if fraction == '+':
+            if direction == 'y':
+                slit = np.linspace(0, np.abs(end[2] - start[2]), np.abs(end[1] - start[1]))
+                fraction = np.abs(int(slit[0]-slit[1]))
+                print('y', slit)
+                print('fraction', fraction)
+                for i in range(np.abs(end[1] - start[1])):
+                    if end[1] > start[1]:
+                        film[start[0]:end[0], start[1] + i, start[2]:start[2] + int(slit[i])] = value
+                        for j in range(fraction):
+                            film[start[0]:end[0], start[1] + i,start[2]+int(slit[i])+j] = 1/(fraction+1)*(fraction-j)
+                    elif end[1] < start[1]:
+                        film[start[0]:end[0], start[1] - i, start[2]:start[2] + int(slit[i])] = value
+                        for j in range(fraction):
+                            film[start[0]:end[0], start[1] - i,start[2]+int(slit[i])+j] = 1/(fraction+1)*(fraction-j)
+            elif direction == 'x':
+                slit = np.linspace(0, np.abs(end[2] - start[2]), np.abs(end[0] - start[0]))
+                fraction = np.abs(int(slit[0]-slit[1]))
+                print('x', slit)
+                print('fraction', fraction)
+                for i in range(np.abs(end[2] - start[2])):
+                    if end[0] > start[0]:
+                        film[start[0] + i, start[1]:end[1], start[2]:start[2] + int(slit[i])] = value
+                        for j in range(fraction):
+                            film[start[0] + i, start[1]:end[1], start[2]+int(slit[i])+j] = 1/(fraction+1)*(fraction-j)
+                    elif end[0] < start[0]:
+                        film[start[0] - i, start[1]:end[1], start[2]:start[2] + int(slit[i])] = value
+                        for j in range(fraction):
+                            film[start[0] - i, start[1]:end[1], start[2]+int(slit[i])+j] = 1/(fraction+1)*(fraction-j)
+        elif fraction == '-':
+            if direction == 'y':
+                slit = np.linspace(0, np.abs(end[2] - start[2]), np.abs(end[1] - start[1]))
+                fraction = np.abs(int(slit[0]-slit[1]))
+                print('y', slit)
+                print('fraction', fraction)
+                for i in range(np.abs(end[1] - start[1])):
+                    if end[1] > start[1]:
+                        film[start[0]:end[0], start[1] + i, start[2] - int(slit[i]):start[2]+1] = value
+                        for j in range(fraction):
+                            film[start[0]:end[0], start[1] + i,start[2]-int(slit[i])-j] = 1/(fraction+1)*(fraction-j)
+                    elif end[1] < start[1]:
+                        film[start[0]:end[0], start[1] - i, start[2] - int(slit[i]):start[2]+1] = value
+                        for j in range(fraction):
+                            film[start[0]:end[0], start[1] - i,start[2]-int(slit[i])-j] = 1/(fraction+1)*(fraction-j)
+            elif direction == 'x':
+                slit = np.linspace(0, np.abs(end[2] - start[2]), np.abs(end[0] - start[0]))
+                fraction = np.abs(int(slit[0]-slit[1]))
+                print('x', slit)
+                print('fraction', fraction)
+                for i in range(np.abs(end[2] - start[2])):
+                    if end[0] > start[0]:
+                        film[start[0] + i, start[1]:end[1], start[2] - int(slit[i]):start[2]+1] = value
+                        for j in range(fraction):
+                            film[start[0] + i, start[1]:end[1], start[2] - int(slit[i]):start[2]] = 1/(fraction+1)*(fraction-j)
+                    elif end[0] < start[0]:
+                        film[start[0] - i, start[1]:end[1], start[2] - int(slit[i]):start[2]+1] = value
+                        for j in range(fraction):
+                            film[start[0] - i, start[1]:end[1], start[2] - int(slit[i]):start[2]] = 1/(fraction+1)*(fraction-j)
+        return film
 
-    diameter = 60
-    maskUp_sim = maskUp/maskBottom*diameter
-    maskDeep_sim = maskDeep/maskBottom*diameter
+    film = np.zeros((70, 200, 150))
 
-    film = np.zeros((100, 100, 200, 3))
+    bottom = 10
+    # film[:, :, 0:bottom] = 10 # bottom
 
-    bottom = 100
-    height = bottom + int(maskDeep_sim)
+    height = 80
+    left_side = 71
+    right_side = 71
 
-    density = 10
+    slit = 8
+    film[:, left_side+slit:200-right_side-slit, 0:height] = 10
 
-    sphere = np.ones((100, 100, 200), dtype=bool)
+    left_side_gap = 19
+    right_side_gap = 181
+    film[:, :left_side_gap, 0:height] = 10
+    film[:, right_side_gap:, 0:height] = 10
 
-    diameter = 60
+    film = slide2D_fractionZ(film=film, start=[0, left_side, bottom], end=[70, left_side+slit, height], direction='y', fraction='+', value=10)
+    film = slide2D_fractionZ(film=film, start=[0, 200-right_side-1, bottom], end=[70, 200-right_side-slit-1, height], direction='y', fraction='+', value=10)
+    film = slide2D_fractionZ(film=film, start=[0, left_side_gap+slit-1, bottom], end=[70, left_side_gap-1, height], direction='y', fraction='+', value=10)
+    film = slide2D_fractionZ(film=film, start=[0, right_side_gap-slit, bottom], end=[70, right_side_gap, height], direction='y', fraction='+', value=10)
 
-    center = 50
-    for k in range(int(diameter/2 - int(maskUp_sim/2))):
-        # print(diameter/2 - k)
-        radius = diameter/2 - k
-        # print('deep', int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k))
-        bottom_step = int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k)
-        for i in range(sphere.shape[0]):
-            for j in range(sphere.shape[1]):
-                if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
-                    sphere[i, j, bottom_step:bottom_step+int(maskDeep_sim/(diameter/2 - maskUp_sim/2))] = 0
+    # film[:, 80:121, 0:31] = 10
 
-    film[sphere, 2] = density
-    film[:, :, height:, :] = 0
-    film[:, :, 0:bottom, 0] = density # bottom
-    film[:, :, 0:bottom, 1] = 0 # bottom
-    film[:, :, 0:bottom, 2] = 0 # bottom
+    film[:, :, 0:bottom] = 10 # bottom
+    film[:, :, height:] = 0 # bottom
 
-    # maskUp = 2.09
-    # maskBottom = 2.6
-    # maskDeep = 2.808
+    yield_hist = np.array([[1.0, 1.01, 1.05,  1.2,  1.4,  1.5, 1.07, 0.65, 0.28, 0.08,  0, \
+                            0.08, 0.28,0.65,  1.07, 1.5, 1.4, 1.2, 1.05, 1.01, 1.0 ], \
+                            [  0,  5,   10,   20,   30,   40,   50,   60,   70,   80, 90, \
+                            100, 110, 120, 130, 140, 150, 160, 170, 175, 180]])
+    yield_hist[1] *= np.pi/180
 
-    # diameter = 120
-    # maskUp_sim = maskUp/maskBottom*diameter
-    # maskDeep_sim = maskDeep/maskBottom*diameter
+    etchfilm = np.zeros((70, 200, 150, 2))
+    etchfilm[:, :, :, 0] = film
+    # etchfilm[:, :, :, 1] = film
 
-    # film = np.zeros((200, 200, 250, 3))
-
-    # bottom = 100
-    # height = bottom + int(maskDeep_sim)
-
-    # density = 10
-
-    # sphere = np.ones((200, 200, 250), dtype=bool)
-
-    # diameter = 120
-
-    # center = 100
-    # for k in range(int(diameter/2 - int(maskUp_sim/2))):
-    #     # print(diameter/2 - k)
-    #     radius = diameter/2 - k
-    #     # print('deep', int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k))
-    #     bottom_step = int(bottom + maskDeep_sim/(diameter/2 - maskUp_sim/2)*k)
-    #     for i in range(sphere.shape[0]):
-    #         for j in range(sphere.shape[1]):
-    #             if np.abs(i-center)*np.abs(i-center) + np.abs(j-center)*np.abs(j-center) < radius*radius:
-    #                 sphere[i, j, bottom_step:bottom_step+int(maskDeep_sim/(diameter/2 - maskUp_sim/2))] = 0
-
-    # film[sphere, 2] = density
-    # film[:, :, height:, :] = 0
-    # film[:, :, 0:bottom, 0] = density # bottom
-    # film[:, :, 0:bottom, 1] = 0 # bottom
-    # film[:, :, 0:bottom, 2] = 0 # bottom
+    center = 100
 
 
-    etchfilm = film
+
+    # ----------------------------------------------------------------------------------------------
 
     logname = 'Multi_species_benchmark_1021_hole_ratio01'
-
-    testEtch = etching(inputMethod='bunch', depo_or_etching='etching', 
-                    etchingPoint = np.array([center, center, bottom-30]),depoPoint = np.array([center, center, bottom-30]),
-                    density=density, center_with_direction=np.array([[int(etchfilm.shape[0]/2),int(etchfilm.shape[1]/2),150]]), 
-                    range3D=np.array([[0, etchfilm.shape[0], 0, etchfilm.shape[1], 0, etchfilm.shape[2]]]), InOrOut=[1], yield_hist=np.array([None]),
-                    maskTop=40, maskBottom=98, maskStep=10, maskCenter=[int(etchfilm.shape[0]/2), int(etchfilm.shape[1]/2)],backup=False, 
-                    mirrorGap=5,
-                    reaction_type=False, param = [1.6, -0.7],n=1,
-                    celllength=1e-5, kdtreeN=5, filmKDTree=np.array([[2, 0], [3, 1]]),weight=-0.2, tstep=1e-5,
-                    substrateTop=bottom,posGeneratorType='top', logname=logname)
+    inputMethod='bunch'
+    etchingPoint = np.array([center, center, 125])
+    depoPoint = np.array([center, center, 125])
+    density = 10
+    center_with_direction=np.array([[int(etchfilm.shape[0]/2),int(etchfilm.shape[1]/2),150]])
+    range3D=np.array([[0, etchfilm.shape[0], 0, etchfilm.shape[1], 0, etchfilm.shape[2]]])
+    InOrOut=[1]
+    # yield_hist=np.array([None])
+    yield_hist = yield_hist
+    maskTop=40, 
+    maskBottom=98, 
+    maskStep=10, 
+    maskCenter=[int(etchfilm.shape[0]/2), int(etchfilm.shape[1]/2)]
+    backup=False
+    mirrorGap=5
+    reaction_type=False
+    param = [1.6, -0.7]
+    n=1
+    celllength=1e-5
+    kdtreeN=5
+    filmKDTree=np.array([[2, 0, 1], [3, 0, -1]]) # 1 for depo -1 for etching
+    # filmKDTree=np.array([[2, 1], [3, 1]])
+    weightDepo=0.2
+    weightEtching = 0.2
+    tstep=1e-5
+    substrateTop=80
+    posGeneratorType='top'
+    testEtch = etching(
+                        inputMethod,
+                        etchingPoint,depoPoint,
+                        density, center_with_direction, 
+                        range3D, InOrOut, yield_hist,
+                        maskTop, maskBottom, maskStep, maskCenter,backup, 
+                        mirrorGap,
+                        reaction_type, param,n,
+                        celllength, kdtreeN, filmKDTree,weightDepo,weightEtching, tstep,
+                        substrateTop,posGeneratorType, logname)
     
 
     cicle = 100
     celllength=1e-5
-    parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]])
-    # parcel = np.array([[etchfilm.shape[0]*celllength, etchfilm.shape[0]*celllength, 199*celllength, 0, 0, 1, etchfilm.shape[0], etchfilm.shape[0], 199, 0]], order='F')
-    # for i in range(cicle):
-    vel_matrix = 0
-    step1 = testEtch.inputParticle(etchfilm, parcel, 'maxwell',vel_matrix, 0, int(5e4), int(12e7), int(1e5),2, 10, 1)
+    parcel = np.array([[95*celllength, 95*celllength, 159*celllength, 0, 0, 1, 95, 95, 159, 0.2, 0]])
+    step1 = testEtch.inputParticle(etchfilm, parcel, 'depo', 'maxwell', 0, 0, int(5e3), int(1e6), int(1e5),2, 4, 100)
 
-    np.save('./bosch_data_1022_timeit/bosch_sf_step_test_Ar', etchfilm)
-    #                                               (velGeneratorType, typeID, inputCount, emptyZ=Zgap)
-    # maxwell = 'maxwell'
-    # cProfile.run('etching1 = testEtch.inputParticle(maxwell, 0, int(1e5),int(1e7), 10)', 'noMirror_cprofile')
-
-    # etching1 = testEtch.inputParticle(125, velosity_matrix, typeID, 2e-3, 10)
-
-    # sumFilm = np.sum(etching1[0], axis=-1)
-
-    # # depo1 = torch.Tensor(np.logical_and(sumFilm[:60, :, :,]!=10, sumFilm[:60, :, :,]!=0)).to_sparse()
-    # # depo1 = depo1.indices().numpy().T
-
-    # # substrute = torch.Tensor(sumFilm[:60, :, :,]==10).to_sparse()
-    # # substrute = substrute.indices().numpy().T
-    # # depomesh = pv.PolyData(depo1)
-    # # depomesh["radius"] = np.ones(depo1.shape[0])*0.5
-    # # geom = pv.Box()
-
-    # # submesh = pv.PolyData(substrute)
-    # # submesh["radius"] = np.ones(substrute.shape[0])*0.5
-
-    # # # Progress bar is a new feature on master branch
-    # # depoglyphed = depomesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-    # # subglyphed = submesh.glyph(scale="radius", geom=geom) # progress_bar=True)
-
-    # # p = pv.Plotter()
-    # # # p.add_mesh(depoglyphed, color='cyan')
-    # # p.add_mesh(subglyphed, color='dimgray')
-    # # p.enable_eye_dome_lighting()
-    # # p.show()
-
-
-    # point_cloud = pv.PolyData(etching1[1][:, 3:])
-    # vectors = etching1[1][:, :3]
-
-    # point_cloud['vectors'] = vectors
-    # arrows = point_cloud.glyph(
-    #     orient='vectors',
-    #     scale=1000,
-    #     factor=2,
-    # )
-
-    # # Display the arrows
-    # plotter = pv.Plotter()
-    # plotter.add_mesh(point_cloud, color='maroon', point_size=5.0, render_points_as_spheres=True)
-    # # plotter.add_mesh(arrows, color='lightblue')
-    # # plotter.add_point_labels([point_cloud.center,], ['Center',],
-    # #                          point_color='yellow', point_size=20)
-    # plotter.show_grid()
-    # plotter.show()
+    # np.save('./bosch_data_1117_timeit/bosch_sf_step_test_Ar', etchfilm)

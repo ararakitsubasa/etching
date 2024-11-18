@@ -52,8 +52,8 @@ from numba import jit, prange
 #                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
 
-react_table = np.array([[[1, 1, 0, 0], [1.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+react_table = np.array([[[0.3, 1, 0, 0], [1.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
@@ -108,7 +108,7 @@ def reaction_yield(parcel, film, film_vaccum, theta, update_film):
         if reactList[i] == -1:
             parcel[i,3:6] = SpecularReflect(parcel[i,3:6], theta[i])
             # print('reflection')
-            # parcel[i,3:6] = reemission(parcel[i,3:6], theta[i])
+            # parcel[i,3:6] = DiffusionReflect(parcel[i,3:6], theta[i])
 
     return film, film_vaccum, parcel, update_film, reactList, depo_parcel
 
@@ -120,7 +120,7 @@ kB = 1.380649e-23
 T = 100
 
 @jit(nopython=True)
-def reemission(vel, normal):
+def DiffusionReflect(vel, normal):
     mass = 27*1.66e-27
     Ut = vel - vel@normal*normal
     tw1 = Ut/np.linalg.norm(Ut)
@@ -130,6 +130,14 @@ def reemission(vel, normal):
     UN = U / np.linalg.norm(U)
         # UN[i] = U
     return UN
+
+@jit(nopython=True)
+def reemission_multi(vel, normal):
+    vels = np.zeros_like(vel)
+    for i in range(vels.shape[0]):
+        vels[i] = DiffusionReflect(vel[i], normal[i])
+        # vels[i] = SpecularReflect(vel[i], normal[i])
+    return vels
 
 def removeFloat(film):  # fast scanZ
     
@@ -311,16 +319,23 @@ class etching(surface_normal):
         
         # return film
 
+    def get_indices(self):
+        # 直接将切片操作和数据类型转换合并
+        to_depo = self.parcel[:, 9] == 1
+        to_etch = self.parcel[:, 9] == 0
+
+        return self.parcel[to_depo, 6].astype(int), self.parcel[to_depo, 7].astype(int), self.parcel[to_depo, 8].astype(int), \
+               self.parcel[to_etch, 6].astype(int), self.parcel[to_etch, 7].astype(int), self.parcel[to_etch, 8].astype(int)
+    
     def etching_film(self):
 
-        i = self.parcel[:, 6].astype(int)
-        j = self.parcel[:, 7].astype(int)
-        k = self.parcel[:, 8].astype(int)
-        # sumFilm = np.sum(self.film, axis=-1)
-        indice_inject = np.array(self.sumFilm[i, j, k] >= 10) 
+        i_depo, j_depo, k_depo, i_etch, j_etch, k_etch  = self.get_indices()
+
+        indice_inject_depo = np.array(self.sumFilm[i_depo, j_depo, k_depo] >= 10) # depo
+        indice_inject = np.array(self.sumFilm[i_etch, j_etch, k_etch] >= 10) # ethicng
+
         reactListAll = np.ones(indice_inject.shape[0])*-2
-        # print('indice inject', indice_inject.shape)
-        # if indice_inject.size != 0:
+
         pos_1 = self.parcel[indice_inject, :3]
         vel_1 = self.parcel[indice_inject, 3:6]
         ijk_1 = self.parcel[indice_inject, 6:9]
@@ -372,8 +387,8 @@ class etching(surface_normal):
 
         return depo_count #, film_max, surface_true
 
-    # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, typeID])
-    def Parcelgen(self, pos, vel, typeID):
+    # particle data struction np.array([posX, posY, posZ, velX, velY, velZ, i, j, k, depo_or_etching,typeID])
+    def Parcelgen(self, pos, vel, depo_or_etching, typeID):
 
         # i = np.floor((pos[:, 0]/self.celllength) + 0.5).astype(int)
         # j = np.floor((pos[:, 1]/self.celllength) + 0.5).astype(int)
@@ -381,19 +396,21 @@ class etching(surface_normal):
         i = np.floor((pos[:, 0]/self.celllength)).astype(int)
         j = np.floor((pos[:, 1]/self.celllength)).astype(int)
         k = np.floor((pos[:, 2]/self.celllength)).astype(int)
-        parcelIn = np.zeros((pos.shape[0], 10))
+        parcelIn = np.zeros((pos.shape[0], 11))
         parcelIn[:, :3] = pos
         parcelIn[:, 3:6] = vel
         parcelIn[:, 6] = i
         parcelIn[:, 7] = j
         parcelIn[:, 8] = k
-        parcelIn[:, 9] = typeID
+        parcelIn[:, 9] = 0 # depo: 1 etch: 0
+        # parcelIn[:, 9] = depo_or_etching # depo: 1 etch: 0
+        parcelIn[:, 10] = typeID
         self.parcel = np.concatenate((self.parcel, parcelIn))
 
 
     def runEtch(self, inputCount,runningCount, max_react_count, emptyZ):
 
-        self.parcel = np.zeros((1, 10))
+        self.parcel = np.zeros((1, 11))
         # tmax = time
         tstep = self.timeStep
         t = 0
@@ -422,7 +439,7 @@ class etching(surface_normal):
         vel_type = velGenerator(inputCount)
         v1 = vel_type[:, :3]
         typeIDIn = vel_type[:, -1]
-        self.Parcelgen(p1, v1, typeIDIn)
+        self.Parcelgen(p1, v1, 1, typeIDIn)
         self.parcel = self.parcel[1:, :]
 
         self.update_film = np.zeros_like(self.sumFilm, dtype=np.bool_)
@@ -441,7 +458,7 @@ class etching(surface_normal):
                     vel_type = velGenerator(inputCount)
                     v1 = vel_type[:, :3]
                     typeIDIn = vel_type[:, -1]
-                    self.Parcelgen(p1, v1, typeIDIn)
+                    self.Parcelgen(p1, v1, 1, typeIDIn)
 
                 # if self.inputMethod == 'bunch':
                 #     p1 = posGenerator(inputCount, filmThickness, emptyZ)

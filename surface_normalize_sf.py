@@ -51,6 +51,34 @@ class surface_normal:
         
         return surface_sparse.to_sparse()
         
+    def scanZ_vaccum(self, film): # fast scanZ
+        film = torch.Tensor(film)
+        xshape, yshape, zshape = film.shape
+        
+        # 初始化一个全零的表面稀疏张量
+        surface_sparse = torch.zeros((xshape, yshape, zshape))
+        
+        # 获取当前平面与前后平面的布尔索引
+        current_plane = film == 0
+
+        # 获取周围邻居的布尔索引
+        neighbors = torch.zeros_like(film, dtype=torch.bool)
+        
+        neighbors[1:, :, :] |= film[:-1, :, :] > 0  # 上面
+        neighbors[:-1, :, :] |= film[1:, :, :] > 0  # 下面
+        neighbors[:, 1:, :] |= film[:, :-1, :] > 0  # 左边
+        neighbors[:, :-1, :] |= film[:, 1:, :] > 0  # 右边
+        neighbors[:, :, 1:] |= film[:, :, :-1] > 0  # 前面
+        neighbors[:, :, :-1] |= film[:, :, 1:] > 0  # 后面
+        
+        # 获取满足条件的索引
+        condition = current_plane & neighbors
+        
+        # 更新表面稀疏张量
+        surface_sparse[condition] = 1
+        
+        return surface_sparse.to_sparse()
+    
     def normalconsistency_3D_real(self, planes):
         """
         This function checks whether the normals are oriented towards the outside of the surface, i.e., it 
@@ -137,42 +165,45 @@ class surface_normal:
         # 调用 normalconsistency_3D_real 方法
         planes_consist = self.normalconsistency_3D_real(planes)
 
-        return planes_consist
+        planes_vaccum = self.scanZ_vaccum(film).indices().T.numpy()
 
-    def update_pointcloud(self, planes, film, indice):
 
-        surface_tree = cKDTree(points)
-        dd, ii = surface_tree.query(points, k=18, workers=5)
+        return planes_consist, planes_vaccum
 
-        pointsNP = points.numpy()
+    # def update_pointcloud(self, planes, film, indice):
 
-        # 计算所有点的均值
-        knn_pts = pointsNP[ii]
-        xmn = np.mean(knn_pts[:, :, 0], axis=1)
-        ymn = np.mean(knn_pts[:, :, 1], axis=1)
-        zmn = np.mean(knn_pts[:, :, 2], axis=1)
+    #     surface_tree = cKDTree(points)
+    #     dd, ii = surface_tree.query(points, k=18, workers=5)
 
-        c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
+    #     pointsNP = points.numpy()
 
-        # 计算协方差矩阵
-        cov = np.einsum('...ij,...ik->...jk', c, c)
+    #     # 计算所有点的均值
+    #     knn_pts = pointsNP[ii]
+    #     xmn = np.mean(knn_pts[:, :, 0], axis=1)
+    #     ymn = np.mean(knn_pts[:, :, 1], axis=1)
+    #     zmn = np.mean(knn_pts[:, :, 2], axis=1)
 
-        # 单值分解 (SVD)
-        u, s, vh = np.linalg.svd(cov)
+    #     c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
 
-        # 选择最小特征值对应的特征向量
-        minevindex = np.argmin(s, axis=1)
-        normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
+    #     # 计算协方差矩阵
+    #     cov = np.einsum('...ij,...ik->...jk', c, c)
 
-        # 生成平面矩阵
-        planes = np.hstack((normal_all, pointsNP))
+    #     # 单值分解 (SVD)
+    #     u, s, vh = np.linalg.svd(cov)
 
-        # 调用 normalconsistency_3D_real 方法
-        planes_consist = self.normalconsistency_3D_real(planes)
+    #     # 选择最小特征值对应的特征向量
+    #     minevindex = np.argmin(s, axis=1)
+    #     normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
 
-        return planes_consist
+    #     # 生成平面矩阵
+    #     planes = np.hstack((normal_all, pointsNP))
 
-    def get_inject_normal(self, plane, pos, vel):
+    #     # 调用 normalconsistency_3D_real 方法
+    #     planes_consist = self.normalconsistency_3D_real(planes)
+
+    #     return planes_consist
+
+    def get_inject_normal(self, plane, plane_vaccum, pos, vel):
         # plane = self.get_pointcloud(film)
         plane_point = plane[:, 3:6]
         normal = plane[:, :3]
@@ -184,7 +215,11 @@ class surface_normal:
         plane_point_int = np.array(plane_point[ii]).astype(int)
         # dot_products = np.einsum('...i,...i->...', velocity, normal[ii])
         # theta = np.arccos(dot_products)
-        return plane_point_int, normal[ii]
+        plane_vaccum_tree = cKDTree(plane_vaccum*self.celllength)
+        dd_v, ii_v = plane_vaccum_tree.query(pos, k=1, workers=1)
+        plane_point_vaccum_int = np.array(plane_vaccum[ii_v]).astype(int)
+
+        return plane_point_int, normal[ii], plane_point_vaccum_int
 
     def get_inject_theta(self, plane, pos, vel):
         # plane = self.get_pointcloud(film)
