@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+# import torch
 from scipy.spatial import cKDTree
 from scipy import interpolate
 import math
@@ -15,6 +15,7 @@ class surface_normal:
         self.celllength = celllength
         self.tstep = tstep
         # In for +1 out for -1
+        self.knear = 18
         self.InOrOut = InOrOut 
         self.maskTop = maskTop
         self.maskBottom = maskBottom
@@ -31,17 +32,43 @@ class surface_normal:
 
 
     
-    def scanZ(self, film): # fast scanZ
-        film = torch.Tensor(film)
+    # def scanZ(self, film): # fast scanZ
+    #     film = torch.Tensor(film)
 
-        # 初始化一个全零的表面稀疏张量
-        surface_sparse_depo = torch.zeros_like(film)
+    #     # 初始化一个全零的表面稀疏张量
+    #     surface_sparse_depo = torch.zeros_like(film)
 
-        # depo
-        current_plane_depo = film >= self.filmDensity - 1 # 9
-        # 获取周围邻居的布尔索引
-        neighbors_depo = torch.zeros_like(film, dtype=torch.bool)
+    #     # depo
+    #     current_plane_depo = film >= self.filmDensity - 1 # 9
+    #     # 获取周围邻居的布尔索引
+    #     neighbors_depo = torch.zeros_like(film, dtype=torch.bool)
         
+    #     neighbors_depo[1:, :, :] |= film[:-1, :, :] <= 1  # 上面
+    #     neighbors_depo[:-1, :, :] |= film[1:, :, :] <= 1  # 下面
+    #     neighbors_depo[:, 1:, :] |= film[:, :-1, :] <= 1  # 左边
+    #     neighbors_depo[:, :-1, :] |= film[:, 1:, :] <= 1  # 右边
+    #     neighbors_depo[:, :, 1:] |= film[:, :, :-1] <= 1  # 前面
+    #     neighbors_depo[:, :, :-1] |= film[:, :, 1:] <= 1  # 后面
+
+    #     # 获取满足条件的索引
+    #     condition_depo = current_plane_depo & neighbors_depo
+
+    #     # 更新表面稀疏张量
+    #     surface_sparse_depo[condition_depo] = 1
+
+    #     return surface_sparse_depo.to_sparse()
+      
+    def scanZ_numpy(self,film):
+        # 初始化一个全零的表面数组
+        surface_sparse_depo = np.zeros_like(film)
+
+        # depo 条件
+        current_plane_depo = film >= self.filmDensity - 1
+
+        # 创建邻居布尔索引数组
+        neighbors_depo = np.zeros_like(film, dtype=bool)
+
+        # 获取周围邻居的布尔索引
         neighbors_depo[1:, :, :] |= film[:-1, :, :] <= 1  # 上面
         neighbors_depo[:-1, :, :] |= film[1:, :, :] <= 1  # 下面
         neighbors_depo[:, 1:, :] |= film[:, :-1, :] <= 1  # 左边
@@ -55,35 +82,7 @@ class surface_normal:
         # 更新表面稀疏张量
         surface_sparse_depo[condition_depo] = 1
 
-        return surface_sparse_depo.to_sparse()
-      
-    # def scanZ(self, film): # fast scanZ
-    #     film = torch.Tensor(film)
-    #     xshape, yshape, zshape = film.shape
-        
-    #     # 初始化一个全零的表面稀疏张量
-    #     surface_sparse = torch.zeros((xshape, yshape, zshape))
-        
-    #     # 获取当前平面与前后平面的布尔索引
-    #     current_plane = film == 0
-
-    #     # 获取周围邻居的布尔索引
-    #     neighbors = torch.zeros_like(film, dtype=torch.bool)
-        
-    #     neighbors[1:, :, :] |= film[:-1, :, :] != 0  # 上面
-    #     neighbors[:-1, :, :] |= film[1:, :, :] != 0  # 下面
-    #     neighbors[:, 1:, :] |= film[:, :-1, :] != 0  # 左边
-    #     neighbors[:, :-1, :] |= film[:, 1:, :] != 0  # 右边
-    #     neighbors[:, :, 1:] |= film[:, :, :-1] != 0  # 前面
-    #     neighbors[:, :, :-1] |= film[:, :, 1:] != 0  # 后面
-        
-    #     # 获取满足条件的索引
-    #     condition = current_plane & neighbors
-
-    #     # 更新表面稀疏张量
-    #     surface_sparse[condition] = 1
-
-    #     return surface_sparse.to_sparse()
+        return surface_sparse_depo
             
     def normalconsistency_3D_real(self, planes):
         """
@@ -163,15 +162,20 @@ class surface_normal:
         return planes
 
     def get_pointcloud(self, film):
-        test = self.scanZ(film)
-        points = test.indices().T
+        test = self.scanZ_numpy(film)
+        points = np.array(np.nonzero(test)).T
         surface_tree = cKDTree(points)
-        dd, ii = surface_tree.query(points, k=18, workers=5)
+        dd, ii = surface_tree.query(points, k=self.knear, workers=5)
 
-        pointsNP = points.numpy()
+        # indice_tooFar = dd < 3
+        # self.indice_tooFar = indice_tooFar
+        # self.ddshape = dd
+        # self.iishape = ii
+        # self.points = points
+        # pointsNP = points
 
         # 计算所有点的均值
-        knn_pts = pointsNP[ii]
+        knn_pts = points[ii]
         xmn = np.mean(knn_pts[:, :, 0], axis=1)
         ymn = np.mean(knn_pts[:, :, 1], axis=1)
         zmn = np.mean(knn_pts[:, :, 2], axis=1)
@@ -189,7 +193,7 @@ class surface_normal:
         normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
 
         # 生成平面矩阵
-        planes = np.hstack((normal_all, pointsNP))
+        planes = np.hstack((normal_all, points))
 
         # 调用 normalconsistency_3D_real 方法
         planes_Film = self.normalconsistency_3D_real(planes)
