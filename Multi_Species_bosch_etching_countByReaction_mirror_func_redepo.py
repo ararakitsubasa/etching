@@ -709,7 +709,7 @@ class etching(surface_normal):
             elif type[2] == -1:
                 # self.film[i1, j1, k1, type[1]] -= 0 * etch_yield * dd[:, kdi] / ddsum  # etching
                 self.film[i1, j1, k1, type[1]] -= weight * etch_yield * dd[:, kdi] / ddsum  # etching
-                # self.redepo_Generator(pos, vel, normal, weight * etch_yield)
+                self.redepo_Generator(pos, vel, normal, weight * etch_yield)
 
     def redepo_Generator(self, pos, vel, normal, weight):
         # pos[:,0] -= 2*self.mirrorGap*self.celllength
