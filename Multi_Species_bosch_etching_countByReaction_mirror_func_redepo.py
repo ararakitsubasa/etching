@@ -13,6 +13,8 @@ from numba import jit, prange
 # import torch
 from scipy import interpolate
 
+import sputter_angle_dist as sp_angle
+
 #solid = film[i, j, k, 10][Si, SiF1, SiF2, SiF3, SiO SiO2, SiOF, SiOF2, SiO2F, SiO2F2]
 #react_t g[Cu] s  [1,         2]
 #react_t g[Cu] s  [Cu,       Si]
@@ -184,20 +186,27 @@ def reaction_yield(parcel, film, normal):
 def SpecularReflect(vel, normal):
     return vel - 2*vel@normal*normal
 
-kB = 1.380649e-23
-T = 100
+# kB = 1.380649e-23
+# T = 100
 
-@jit(nopython=True)
-def DiffusionReflect(vel, normal):
-    mass = 27*1.66e-27
-    Ut = vel - vel@normal*normal
-    tw1 = Ut/np.linalg.norm(Ut)
-    tw2 = np.cross(tw1, normal)
-    # U = np.sqrt(kB*T/particleMass[i])*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
-    U = np.sqrt(kB*T/mass)*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
-    UN = U / np.linalg.norm(U)
-        # UN[i] = U
-    return UN
+# @jit(nopython=True)
+# def DiffusionReflect(vel, normal):
+#     mass = 27*1.66e-27
+#     Ut = vel - vel@normal*normal
+#     tw1 = Ut/np.linalg.norm(Ut)
+#     tw2 = np.cross(tw1, normal)
+#     # U = np.sqrt(kB*T/particleMass[i])*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
+#     U = np.sqrt(kB*T/mass)*(np.random.randn()*tw1 + np.random.randn()*tw2 - np.sqrt(-2*np.log((1-np.random.rand())))*normal)
+#     UN = U / np.linalg.norm(U)
+#         # UN[i] = U
+#     return UN
+
+def angle_to_vel(vel, normal):
+    vels = np.zeros_like(vel)
+    for i in range(vels.shape[0]):
+        R, theta, phi = sp_angle.phi_theta_dist(resolu, theta1, Eth, E)
+        phitheta = sp_angle.accept_reject_phi_theta(R, theta, phi)
+
 
 @jit(nopython=True)
 def reemission_multi(vel, normal):
