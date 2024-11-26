@@ -201,11 +201,11 @@ def SpecularReflect(vel, normal):
 #         # UN[i] = U
 #     return UN
 
-def angle_to_vel(vel, normal):
-    vels = np.zeros_like(vel)
-    for i in range(vels.shape[0]):
-        R, theta, phi = sp_angle.phi_theta_dist(resolu, theta1, Eth, E)
-        phitheta = sp_angle.accept_reject_phi_theta(R, theta, phi)
+# def angle_to_vel(vel, normal):
+#     vels = np.zeros_like(vel)
+#     for i in range(vels.shape[0]):
+#         R, theta, phi = sp_angle.phi_theta_dist(resolu, theta1, Eth, E)
+#         phitheta = sp_angle.accept_reject_phi_theta(R, theta, phi)
 
 
 @jit(nopython=True)
@@ -303,13 +303,13 @@ class etching(surface_normal):
     def __init__(self,inputMethod, etchingPoint,depoPoint,density, 
                  center_with_direction, range3D, InOrOut, yield_hist,
                  maskTop, maskBottom, maskStep, maskCenter, backup,#surface_normal
-                 mirrorGap, # mirror
+                 mirrorGap, offset_distence, # mirror
                  reaction_type,  #reaction 
                  param, n, celllength, kdtreeN,filmKDTree,weightDepo,weightEtching,
                  tstep, substrateTop, posGeneratorType, logname):
         # super().__init__(tstep, pressure_pa, temperature, cellSize, celllength, chamberSize)
         surface_normal.__init__(self, center_with_direction, range3D, InOrOut,celllength, tstep, yield_hist,\
-                                maskTop, maskBottom, maskStep, maskCenter, backup, density)
+                                maskTop, maskBottom, maskStep, maskCenter, backup, density, mirrorGap, offset_distence)
         self.param = param # n beta
         self.kdtreeN = kdtreeN
         self.celllength = celllength
@@ -676,10 +676,22 @@ class etching(surface_normal):
 
         if np.any(surface_film_depo) or np.any(surface_film_etching):
             self.sumFilm = np.sum(self.film, axis=-1)
-            self.planes = self.get_pointcloud(self.sumFilm)
+            self.update_surface_mirror_noetching(self.sumFilm)
+            self.planes = self.get_pointcloud(self.surface_mirror)
 
         if np.any(surface_film_etching):
             self.depoFloat(type)
+
+    def update_surface_mirror_noetching(self, surface_etching):
+        self.surface_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching
+        self.surface_mirror[:self.mirrorGap, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching[-self.mirrorGap:, :, :]
+        self.surface_mirror[-self.mirrorGap:, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching[:self.mirrorGap, :, :]
+        self.surface_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, :self.mirrorGap, :] = surface_etching[:, -self.mirrorGap:, :]
+        self.surface_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX:, -self.mirrorGap:, :] = surface_etching[:, :self.mirrorGap, :]
+        self.surface_mirror[:self.mirrorGap, :self.mirrorGap, :] = surface_etching[-self.mirrorGap:, -self.mirrorGap:, :]
+        self.surface_mirror[:self.mirrorGap, -self.mirrorGap:, :] = surface_etching[-self.mirrorGap:, :self.mirrorGap, :]
+        self.surface_mirror[-self.mirrorGap:, :self.mirrorGap, :] = surface_etching[:self.mirrorGap, -self.mirrorGap:, :]
+        self.surface_mirror[-self.mirrorGap:, -self.mirrorGap:, :] = surface_etching[:self.mirrorGap, :self.mirrorGap, :]
 
     def update_surface_mirror(self, surface_etching):
         self.surface_etching_mirror[self.mirrorGap:self.mirrorGap+self.cellSizeX, self.mirrorGap:self.mirrorGap+self.cellSizeY, :] = surface_etching
@@ -831,7 +843,8 @@ class etching(surface_normal):
         t = 0
         # inputCount = int(v0.shape[0]/(tmax/tstep))
         self.sumFilm = np.sum(self.film, axis=-1)
-        self.planes = self.get_pointcloud(self.sumFilm)
+        self.update_surface_mirror_noetching(self.sumFilm)
+        self.planes = self.get_pointcloud(self.surface_mirror)
         count_reaction = 0
         inputAll = 0
         filmThickness = self.substrateTop
@@ -1063,6 +1076,7 @@ class etching(surface_normal):
         self.cellSizeY = self.film.shape[1]
         self.cellSizeZ = self.film.shape[2]
         self.surface_etching_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
+        self.surface_mirror = np.zeros((self.cellSizeX+int(self.mirrorGap*2), self.cellSizeY+int(self.mirrorGap*2), self.cellSizeZ))
         print(self.surface_etching_mirror.shape)
         self.log.info('circle step:{}'.format(step))
         result =  self.runEtch(velGeneratorType, typeID, inputCount,runningCount, max_react_count, Zgap, step)

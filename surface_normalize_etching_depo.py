@@ -7,7 +7,7 @@ from math import pi
 
 class surface_normal:
     def __init__(self, center_with_direction, range3D, InOrOut, celllength, tstep, yield_hist, \
-                 maskTop, maskBottom, maskStep, maskCenter, backup, filmDensity):
+                 maskTop, maskBottom, maskStep, maskCenter, backup, filmDensity, mirrorGap, offset_distence):
         # center xyz inOrout
         self.center_with_direction = center_with_direction
         # boundary x1x2 y1y2 z1z2
@@ -23,6 +23,8 @@ class surface_normal:
         self.maskCenter = maskCenter
         self.backup = backup
         self.filmDensity = filmDensity
+        self.mirrorGap = mirrorGap
+        self.offset_distence = offset_distence
         if yield_hist.all() == None:
             self.yield_hist = np.array([[1.0, 1.05,  1.2,  1.4,  1.5, 1.07, 0.65, 0.28, 0.08,  0], \
                                         [  0,   pi/18,   pi/9,   pi/6,   2*pi/9,   5*pi/18,   pi/3,   7*pi/18,   4*pi/9, pi/2]])
@@ -82,7 +84,7 @@ class surface_normal:
         # 更新表面稀疏张量
         surface_sparse_depo[condition_depo] = 1
 
-        return surface_sparse_depo
+        return surface_sparse_depo, surface_sparse_depo[self.mirrorGap:-self.mirrorGap, self.mirrorGap:-self.mirrorGap, :]
             
     def normalconsistency_3D_real(self, planes):
         """
@@ -162,9 +164,12 @@ class surface_normal:
         return planes
 
     def get_pointcloud(self, film):
-        test = self.scanZ_numpy(film)
-        points = np.array(np.nonzero(test)).T
-        surface_tree = cKDTree(points)
+        surface_mirror, surface = self.scanZ_numpy(film)
+        points_mirror = np.array(np.nonzero(surface_mirror)).T
+        points = np.array(np.nonzero(surface)).T
+        points[:, 0] += self.mirrorGap
+        points[:, 1] += self.mirrorGap
+        surface_tree = cKDTree(points_mirror)
         dd, ii = surface_tree.query(points, k=self.knear, workers=5)
 
         # indice_tooFar = dd < 3
@@ -175,10 +180,15 @@ class surface_normal:
         # pointsNP = points
 
         # 计算所有点的均值
-        knn_pts = points[ii]
+        knn_pts = points_mirror[ii]
         xmn = np.mean(knn_pts[:, :, 0], axis=1)
         ymn = np.mean(knn_pts[:, :, 1], axis=1)
         zmn = np.mean(knn_pts[:, :, 2], axis=1)
+
+        # 点-平均中心偏离分量
+        offsetComponent = points - np.array([xmn, ymn, zmn]).T
+
+        self.offset = offsetComponent
 
         c = knn_pts - np.stack([xmn, ymn, zmn], axis=1)[:, np.newaxis, :]
 
@@ -192,7 +202,21 @@ class surface_normal:
         minevindex = np.argmin(s, axis=1)
         normal_all = np.array([u[i, :, minevindex[i]] for i in range(u.shape[0])])
 
+        self.normal_all = normal_all
+        # a = np.einsum('ij,ij->i', normal_all, offsetComponent).T
+        # # offsetComponent_normal = np.divide(offsetComponent.T, np.linalg.norm(offsetComponent, axis=1)).T
+        # # b = normal_all*offsetComponent_normal
+        # offsetComponent_cosin = np.divide(a, np.linalg.norm(offsetComponent, axis=1)).T
+        # offsetComponent_project = offsetComponent - np.einsum('ij,i->ij', offsetComponent, offsetComponent_cosin )
+        # normal_all += offsetComponent_project
+        indice_large = np.linalg.norm(offsetComponent, axis=1) > self.offset_distence
+
+        # normal_all[indice_large] += offsetComponent[indice_large]
+        normal_all[indice_large] = offsetComponent[indice_large]
+        normal_all = np.divide(normal_all.T, np.linalg.norm(normal_all, axis=1)).T
         # 生成平面矩阵
+        points[:, 0] -= self.mirrorGap
+        points[:, 1] -= self.mirrorGap
         planes = np.hstack((normal_all, points))
 
         # 调用 normalconsistency_3D_real 方法
