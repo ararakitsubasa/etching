@@ -47,14 +47,14 @@ from numba import jit, prange
 #             react_table[i, j, react_chem] = react_plus_min
 
 
-# react_table = np.array([[[0.3, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-#                         [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
-#                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
-
-
-react_table = np.array([[[0.3, 1, 0, 0], [1.0, 0,  0, 0], [0.0, 0, 0, 0]],
-                        [[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+react_table = np.array([[[0.3, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+                        [[0.8, -1, 1, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
+
+
+# react_table = np.array([[[0.3, 1, 0, 0], [1.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[0.8, -1, 0, 0], [0.0, 0,  0, 0], [0.0, 0, 0, 0]],
+#                         [[1.0,  0, 0, 0], [1.0, 0, -2, 0], [1.0, 0, 0, 0]]])
 
 # react_table[0, 3, 4] = -2
 # etching act on film, depo need output
@@ -65,10 +65,10 @@ def reaction_yield(parcel, film, film_vaccum, theta, update_film):
     num_reactions = react_table.shape[1]
     choice = np.random.rand(parcel.shape[0], react_table.shape[1])
     reactList = np.ones(parcel.shape[0])*-1
-    # for i in range(num_parcels):
-    #     for j in range(num_reactions):
-    #         if film[i, j] <= 0:
-    #             choice[i, j] = 1
+    for i in range(num_parcels):
+        for j in range(num_reactions):
+            if film[i, j] <= 0:
+                choice[i, j] = 1
 
     depo_parcel = np.zeros(parcel.shape[0])
     for i in range(parcel.shape[0]):
@@ -331,8 +331,8 @@ class etching(surface_normal):
 
         i_depo, j_depo, k_depo, i_etch, j_etch, k_etch  = self.get_indices()
 
-        indice_inject_depo = np.array(self.sumFilm[i_depo, j_depo, k_depo] >= 10) # depo
-        indice_inject = np.array(self.sumFilm[i_etch, j_etch, k_etch] >= 10) # ethicng
+        # indice_inject_depo = np.array(self.sumFilm[i_depo, j_depo, k_depo] >= 10) # depo
+        indice_inject = np.array(self.sumFilm[i_etch, j_etch, k_etch] > 0 ) # ethicng
 
         reactListAll = np.ones(indice_inject.shape[0])*-2
 
